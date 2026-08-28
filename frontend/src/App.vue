@@ -1,0 +1,129 @@
+<script setup>
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useAuthStore } from './stores/auth'
+import { usePontoStore } from './stores/ponto'
+import { useNotificacoesStore } from './stores/notificacoes'
+import { useOsOfflineStore } from './stores/osOffline'
+import { useClientesStore } from './stores/clientes'
+import MenuLateral from './components/MenuLateral.vue'
+import PainelNotificacoes from './components/PainelNotificacoes.vue'
+import PwaAtualizacao from './components/PwaAtualizacao.vue'
+import Logo3D from './components/Logo3D.vue'
+
+const auth = useAuthStore()
+const ponto = usePontoStore()
+const notificacoes = useNotificacoesStore()
+const osOffline = useOsOfflineStore()
+const clientes = useClientesStore()
+const online = ref(navigator.onLine)
+const menuAberto = ref(false)
+const notificacoesAbertas = ref(false)
+let intervaloNotificacoes = null
+
+function sincronizarTudo() {
+  ponto.sincronizarFila()
+  osOffline.sincronizar()
+}
+
+function atualizarStatusRede() {
+  online.value = navigator.onLine
+  if (online.value) sincronizarTudo()
+}
+
+function pararPollNotificacoes() {
+  if (intervaloNotificacoes) {
+    clearInterval(intervaloNotificacoes)
+    intervaloNotificacoes = null
+  }
+}
+
+function iniciarPollNotificacoes() {
+  if (intervaloNotificacoes) return
+  notificacoes.atualizarContagem()
+  intervaloNotificacoes = setInterval(() => notificacoes.atualizarContagem(), 60000)
+}
+
+onMounted(() => {
+  window.addEventListener('online', atualizarStatusRede)
+  window.addEventListener('offline', atualizarStatusRede)
+})
+
+// Liga/desliga o poll de notificações conforme o login, sem depender de reload.
+watch(
+  () => auth.isAuthenticated,
+  (autenticado) => {
+    if (autenticado) {
+      sincronizarTudo()
+      if (navigator.onLine) clientes.carregarTodosParaCache()
+      iniciarPollNotificacoes()
+    } else {
+      pararPollNotificacoes()
+      notificacoes.naoLidas = 0
+    }
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  window.removeEventListener('online', atualizarStatusRede)
+  window.removeEventListener('offline', atualizarStatusRede)
+  pararPollNotificacoes()
+})
+</script>
+
+<template>
+  <div v-if="auth.isAuthenticated" class="app-header">
+    <button type="button" style="border: none; background: none; font-size: 20px; padding: 4px 6px" @click="menuAberto = true">☰</button>
+    <Logo3D :tamanho="22" />
+    <strong style="font-size: 14px; flex: 1">3D Sistemas</strong>
+    <button
+      type="button"
+      style="border: none; background: none; font-size: 20px; padding: 4px 6px; position: relative"
+      @click="notificacoesAbertas = true"
+    >
+      🔔
+      <span
+        v-if="notificacoes.naoLidas > 0"
+        style="position: absolute; top: 0; right: 0; background: var(--danger); color: white; border-radius: 999px; font-size: 10px; min-width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; padding: 0 3px"
+      >
+        {{ notificacoes.naoLidas > 9 ? '9+' : notificacoes.naoLidas }}
+      </span>
+    </button>
+  </div>
+
+  <div v-if="!online" class="offline-banner">
+    Sem conexão — o que você fizer será enviado quando o sinal voltar
+    <template v-if="osOffline.pendentes || ponto.filaOffline.length">
+      ({{ osOffline.pendentes + ponto.filaOffline.length }} pendente(s))
+    </template>
+  </div>
+  <div
+    v-else-if="osOffline.temErro"
+    class="offline-banner"
+    style="background: var(--danger); cursor: pointer"
+    @click="osOffline.sincronizar()"
+  >
+    Alguns envios falharam — toque para tentar de novo
+  </div>
+  <div
+    v-else-if="osOffline.sincronizando || ponto.sincronizando"
+    class="offline-banner"
+    style="background: var(--accent)"
+  >
+    Sincronizando…
+  </div>
+  <div v-else-if="osOffline.pendentes || ponto.filaOffline.length" class="offline-banner" style="background: var(--accent)">
+    {{ osOffline.pendentes + ponto.filaOffline.length }} item(ns) aguardando envio
+  </div>
+
+  <RouterView />
+
+  <nav v-if="auth.isAuthenticated" class="bottom-nav">
+    <RouterLink to="/">Ponto</RouterLink>
+    <RouterLink to="/ordens-servico">Ordens de Serviço</RouterLink>
+  </nav>
+
+  <MenuLateral :aberto="menuAberto" @fechar="menuAberto = false" />
+  <PainelNotificacoes v-if="auth.isAuthenticated" :aberto="notificacoesAbertas" @fechar="notificacoesAbertas = false" />
+  <PwaAtualizacao />
+</template>

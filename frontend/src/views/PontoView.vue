@@ -1,0 +1,168 @@
+<script setup>
+import { computed, onMounted, ref } from 'vue'
+import { usePontoStore } from '../stores/ponto'
+import { useAuthStore } from '../stores/auth'
+import MapaLocalizacao from '../components/MapaLocalizacao.vue'
+
+const ponto = usePontoStore()
+const auth = useAuthStore()
+const registrando = ref(false)
+const registrosCarregados = ref(false)
+const mensagem = ref('')
+const mensagemErro = ref(false)
+const justificativa = ref('')
+const localizacaoAtual = ref({})
+
+const tipos = [
+  { valor: 'ENTRADA', rotulo: 'Entrada' },
+  { valor: 'SAIDA_INTERVALO', rotulo: 'Saída Intervalo' },
+  { valor: 'VOLTA_INTERVALO', rotulo: 'Volta Intervalo' },
+  { valor: 'SAIDA', rotulo: 'Saída' },
+]
+
+// A partir do último ponto do dia, o que faz sentido bater em seguida.
+const TRANSICOES = {
+  '': ['ENTRADA'],
+  ENTRADA: ['SAIDA_INTERVALO', 'SAIDA'],
+  SAIDA_INTERVALO: ['VOLTA_INTERVALO'],
+  VOLTA_INTERVALO: ['SAIDA_INTERVALO', 'SAIDA'],
+  SAIDA: ['ENTRADA'],
+}
+
+function hojeISO() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+// Último tipo batido hoje, considerando também a fila offline ainda não enviada.
+const ultimoTipoHoje = computed(() => {
+  const doDia = ponto.registrosHoje
+    .filter((r) => (r.registrado_em || '').slice(0, 10) === hojeISO())
+    .slice()
+    .sort((a, b) => new Date(a.registrado_em) - new Date(b.registrado_em))
+  const naFila = ponto.filaOffline.filter(
+    (r) => (r.registrado_em || '').slice(0, 10) === hojeISO(),
+  )
+  const todos = [...doDia, ...naFila]
+  return todos.length ? todos[todos.length - 1].tipo : ''
+})
+
+const tiposPermitidos = computed(() => TRANSICOES[ultimoTipoHoje.value] || [])
+const proximoTipo = computed(() => tiposPermitidos.value[0] || 'ENTRADA')
+
+function aoAtualizarLocalizacao(dados) {
+  localizacaoAtual.value = dados
+}
+
+async function bater(tipo) {
+  registrando.value = true
+  mensagem.value = ''
+  mensagemErro.value = false
+  try {
+    await ponto.registrarPonto(tipo, { ...localizacaoAtual.value, justificativa: justificativa.value })
+    justificativa.value = ''
+    mensagem.value = navigator.onLine
+      ? 'Ponto registrado!'
+      : 'Sem conexão: ponto guardado e será enviado automaticamente.'
+  } catch (e) {
+    const detalhe = e?.response?.data
+    mensagemErro.value = true
+    mensagem.value =
+      detalhe?.tipo?.[0] || detalhe?.detail || 'Não foi possível registrar. Tente novamente.'
+  } finally {
+    registrando.value = false
+  }
+}
+
+onMounted(async () => {
+  if (navigator.onLine) {
+    try {
+      await ponto.carregarRegistrosHoje()
+      registrosCarregados.value = true
+    } catch {
+      // fica sem trava de sequência; o backend valida no envio
+    }
+  }
+})
+</script>
+
+<template>
+  <div class="top-bar">
+    <strong>Olá, {{ auth.user?.first_name || auth.user?.username }}</strong>
+    <button class="btn-secondary" style="border: none; background: none; color: var(--text-muted)"
+      @click="auth.logout(); $router.push('/login')">Sair</button>
+  </div>
+
+  <div class="content">
+    <h2>Bater ponto</h2>
+
+    <div class="card" style="margin-bottom: 16px">
+      <MapaLocalizacao @atualizacao="aoAtualizarLocalizacao" />
+    </div>
+
+    <p
+      v-if="mensagem"
+      :style="{
+        padding: '10px 12px',
+        borderRadius: '8px',
+        marginBottom: '12px',
+        fontWeight: 600,
+        background: mensagemErro ? 'var(--danger)' : 'var(--success)',
+        color: 'white',
+      }"
+    >
+      {{ mensagem }}
+    </p>
+
+    <div class="card" style="display: grid; gap: 10px; margin-bottom: 16px">
+      <button
+        v-for="t in tipos"
+        :key="t.valor"
+        class="btn"
+        :class="{ 'btn-secondary': t.valor !== proximoTipo }"
+        :disabled="registrando || (registrosCarregados && !tiposPermitidos.includes(t.valor))"
+        @click="bater(t.valor)"
+      >
+        {{ t.rotulo }}
+      </button>
+
+      <p v-if="registrosCarregados && proximoTipo" style="color: var(--text-muted); font-size: 13px; margin: 0">
+        Próxima batida esperada: <strong>{{ tipos.find((t) => t.valor === proximoTipo)?.rotulo }}</strong>
+      </p>
+
+      <textarea
+        v-model="justificativa"
+        placeholder="Justificativa (opcional)"
+        rows="2"
+        style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border)"
+      />
+    </div>
+
+    <h2>Registros de hoje</h2>
+    <div v-if="ponto.registrosHoje.length === 0" class="card">Nenhum registro ainda.</div>
+    <ul v-else style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
+      <li v-for="r in ponto.registrosHoje" :key="r.id" class="card">
+        <div style="display: flex; justify-content: space-between">
+          <span>{{ tipos.find((t) => t.valor === r.tipo)?.rotulo }}</span>
+          <span>{{ new Date(r.registrado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }}</span>
+        </div>
+        <div v-if="r.endereco" style="color: var(--text-muted); font-size: 13px; margin-top: 4px">📍 {{ r.endereco }}</div>
+      </li>
+    </ul>
+
+    <p v-if="ponto.filaOffline.length" style="color: var(--warning)">
+      {{ ponto.filaOffline.length }} registro(s) aguardando sincronização.
+    </p>
+
+    <div style="display: flex; gap: 8px; margin-top: 16px">
+      <RouterLink to="/ponto/indicadores" class="btn-secondary" style="flex: 1; display: block; text-align: center; text-decoration: none">
+        Indicadores
+      </RouterLink>
+      <RouterLink to="/ponto/espelho" class="btn-secondary" style="flex: 1; display: block; text-align: center; text-decoration: none">
+        Cartão Ponto
+      </RouterLink>
+    </div>
+    <RouterLink to="/ponto/solicitacoes" class="btn-secondary" style="display: block; text-align: center; text-decoration: none; margin-top: 8px">
+      Solicitações
+    </RouterLink>
+  </div>
+</template>

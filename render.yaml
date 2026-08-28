@@ -1,0 +1,42 @@
+# Blueprint do Render. No painel: New + > Blueprint > conecta este repositório.
+# O Render lê este arquivo e cria o serviço web. O banco é o Neon (Postgres
+# externo), então DATABASE_URL entra como secret manual (sync: false).
+#
+# Depois de criar, preencher no painel (aba Environment) as variáveis marcadas
+# com sync: false — ver DEPLOY.md.
+
+services:
+  - type: web
+    name: gestor-servicos
+    runtime: python
+    plan: free            # troque para "starter" p/ evitar cold start e poder anexar disco
+    region: virginia      # mesma região do banco Neon (aws-us-east-1)
+    branch: main
+    buildCommand: "bash render-build.sh"
+    startCommand: "cd backend && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT"
+    healthCheckPath: /healthz/
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.4"
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://*.onrender.com"
+      # --- preencher manualmente no painel ---
+      - key: DATABASE_URL
+        sync: false
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
