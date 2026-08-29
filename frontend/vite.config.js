@@ -25,6 +25,16 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: 'index.html',
+        // Sem isto o service worker responde QUALQUER navegação (inclusive
+        // /admin/, /api/, /media/) com o index.html do SPA em cache — e a tela
+        // do Django admin nunca carrega no navegador que já registrou o SW.
+        navigateFallbackDenylist: [
+          /^\/admin/,
+          /^\/api/,
+          /^\/media/,
+          /^\/static/,
+          /^\/healthz/,
+        ],
         // Leitura offline. As gravações (criar/iniciar/concluir OS, ponto)
         // passam pela fila do próprio app, não pelo service worker.
         runtimeCaching: [
