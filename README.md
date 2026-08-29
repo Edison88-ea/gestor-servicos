@@ -48,6 +48,7 @@ App em `http://localhost:5173` (proxy automático de `/api` e `/media` para o ba
 - [x] Notificações in-app (sino no topo) quando uma OS é atribuída ou uma solicitação é analisada
 - [x] Painel do gestor: status de ponto dos técnicos hoje, OS em aberto, solicitações pendentes
 - [x] Exportar/imprimir o Cartão Ponto (via impressão do navegador → salvar como PDF)
+- [x] Comprovante de atendimento por OS (PDF): no Painel do Gestor, seção "Comprovantes de OS" com filtro por mês/técnico → abre a OS num layout de impressão com dados, relato, fotos e assinatura
 
 ## O que ainda falta antes de virar o sistema oficial
 

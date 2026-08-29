@@ -36,11 +36,22 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
             "fotos", "pausas"
         )
         user = self.request.user
+        params = self.request.query_params
         if user.papel == user.Papel.TECNICO:
             qs = qs.filter(tecnico=user)
-        status_param = self.request.query_params.get("status")
+
+        status_param = params.get("status")
         if status_param:
             qs = qs.filter(status=status_param.upper())
+
+        # Filtros usados pela exportação de comprovantes no Painel do Gestor.
+        if params.get("tecnico"):
+            qs = qs.filter(tecnico_id=params["tecnico"])
+        mes = params.get("concluida_mes")  # 'AAAA-MM'
+        if mes and "-" in mes:
+            ano, num = mes.split("-")[:2]
+            if ano.isdigit() and num.isdigit():
+                qs = qs.filter(data_conclusao__year=int(ano), data_conclusao__month=int(num))
         return qs
 
     def perform_create(self, serializer):

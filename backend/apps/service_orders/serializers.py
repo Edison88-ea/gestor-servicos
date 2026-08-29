@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.clients.serializers import ClienteSerializer
 from config.drf_fields import CoordinateField
 
 from .models import (
@@ -62,7 +63,10 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     latitude_abertura = CoordinateField()
     longitude_abertura = CoordinateField()
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
+    # Dados completos do cliente para o comprovante de atendimento (PDF).
+    cliente_detalhe = ClienteSerializer(source="cliente", read_only=True)
     tecnico_nome = serializers.CharField(source="tecnico.get_full_name", read_only=True)
+    criado_por_nome = serializers.CharField(source="criado_por.get_full_name", read_only=True)
 
     class Meta:
         model = OrdemServico
@@ -71,9 +75,11 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
             "numero",
             "cliente",
             "cliente_nome",
+            "cliente_detalhe",
             "tecnico",
             "tecnico_nome",
             "criado_por",
+            "criado_por_nome",
             "tipo_servico",
             "descricao",
             "prioridade",

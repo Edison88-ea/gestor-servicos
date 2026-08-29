@@ -315,7 +315,17 @@ onMounted(carregar)
     />
 
     <div v-if="ordem.status === 'CONCLUIDA'" class="card">
-      <p><strong>Concluída em:</strong> {{ new Date(ordem.data_conclusao).toLocaleString('pt-BR') }}</p>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+        <p style="margin: 0"><strong>Concluída em:</strong> {{ new Date(ordem.data_conclusao).toLocaleString('pt-BR') }}</p>
+        <RouterLink
+          v-if="ordem.id"
+          :to="`/ordens-servico/${ordem.id}/comprovante`"
+          class="btn-secondary"
+          style="text-decoration: none; padding: 6px 12px; border-radius: 8px; font-size: 13px; white-space: nowrap"
+        >
+          Comprovante
+        </RouterLink>
+      </div>
       <div v-if="ordem.observacoes_tecnico" style="margin: 8px 0">
         <strong>Relato:</strong>
         <pre style="white-space: pre-wrap; font: inherit; margin: 4px 0 0">{{ ordem.observacoes_tecnico }}</pre>
