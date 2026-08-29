@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from apps.clients.serializers import ClienteSerializer
-from config.drf_fields import CoordinateField
+from config.drf_fields import CoordinateField, RelativeImageField
 
 from .models import (
     FotoOrdemServico,
@@ -10,20 +10,6 @@ from .models import (
     PausaOrdemServico,
     ServicoCatalogo,
 )
-
-
-class RelativeImageField(serializers.ImageField):
-    """Serializa o caminho relativo (/media/...) em vez da URL absoluta.
-
-    A URL absoluta do DRF usa o Host/scheme que chega no Django, que atrás do
-    proxy do Vite / de um túnel vira `http://localhost:5173/...` — quebra como
-    conteúdo misto no celular. O caminho relativo funciona em qualquer origem
-    (dev, túnel, produção)."""
-
-    def to_representation(self, value):
-        if not value:
-            return None
-        return value.url
 
 
 class FotoOrdemServicoSerializer(serializers.ModelSerializer):

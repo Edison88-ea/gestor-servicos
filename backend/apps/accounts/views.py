@@ -9,7 +9,7 @@ from .serializers import UsuarioSerializer
 class UsuarioViewSet(viewsets.ReadOnlyModelViewSet):
     """Lista funcionários. Usado, por exemplo, para escolher o técnico ao criar uma OS."""
 
-    queryset = Usuario.objects.filter(is_active=True)
+    queryset = Usuario.objects.filter(is_active=True).order_by("first_name", "last_name", "id")
     serializer_class = UsuarioSerializer
     permission_classes = [permissions.IsAuthenticated]
 

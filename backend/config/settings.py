@@ -173,6 +173,26 @@ STORAGES = {
 MEDIA_URL = "/media/"
 MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
 
+# Armazenamento das fotos/assinaturas em bucket S3-compatível (Cloudflare R2).
+# Sem R2_BUCKET definido, cai no disco local (dev) — que no plano free do Render
+# é efêmero e some a cada deploy. Ver DEPLOY.md.
+#
+# O bucket é privado: as imagens continuam sendo servidas pela própria API em
+# /media/... (a view faz o proxy do storage). Assim as URLs seguem estáveis e
+# na mesma origem — sem URL assinada expirando, sem CORS, sem bucket público.
+R2_BUCKET = env("R2_BUCKET", default="")
+if R2_BUCKET:
+    AWS_STORAGE_BUCKET_NAME = R2_BUCKET
+    AWS_S3_ENDPOINT_URL = env("R2_ENDPOINT")  # https://<accountid>.r2.cloudflarestorage.com
+    AWS_ACCESS_KEY_ID = env("R2_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY")
+    AWS_S3_REGION_NAME = "auto"
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+    # R2 não suporta ACL; sem isto o django-storages tenta 'public-read' e falha.
+    AWS_DEFAULT_ACL = None
+    AWS_S3_FILE_OVERWRITE = False
+    STORAGES["default"] = {"BACKEND": "storages.backends.s3.S3Storage"}
+
 # Build do frontend (Vue/Vite). Em produção o próprio Django serve esses
 # arquivos via WhiteNoise: assets em /assets/*, service worker em /sw.js,
 # manifest e ícones do PWA na raiz. Em dev a pasta não existe (o Vite serve),

@@ -65,12 +65,33 @@ funcionando entre deploys.
 
 - **Cold start:** o serviço hiberna após ~15 min sem acesso; a primeira
   requisição depois disso demora ~50 s. Some com o plano **Starter** (US$7/mês).
-- **Mídia efêmera:** fotos e assinaturas ficam no disco do container e **somem a
-  cada deploy ou restart**. Para teste de fluxo tudo bem. Para manter:
-  - plano Starter + **Disk** (1 GB) montado em `/var/data`, e
-    `MEDIA_ROOT=/var/data/media` nas env vars; ou
-  - storage S3-compatível (Neon tem buckets) — vale quando virar sistema oficial.
+- **Mídia:** com o Cloudflare R2 configurado (abaixo), fotos e assinaturas
+  persistem. Sem R2, ficam no disco do container e **somem a cada deploy**.
 - **Neon free:** o compute do banco também suspende sem uso e religa em ~1 s.
+
+## Fotos e assinaturas — Cloudflare R2
+
+O disco do Render (plano free) é apagado a cada deploy. As imagens vão para um
+bucket R2 (grátis até 10 GB). O bucket é **privado** — as imagens continuam
+sendo servidas em `/media/...` pela própria API (proxy do bucket), então nada
+muda no frontend e o cache offline do PWA segue funcionando.
+
+1. **Cloudflare** → painel → **R2** → *Create bucket* (nome ex. `gestor-servicos-media`).
+2. R2 → *Manage R2 API Tokens* → *Create API token* → permissão **Object Read & Write**,
+   escopo neste bucket. Anote **Access Key ID**, **Secret Access Key** e o
+   **endpoint** (`https://<accountid>.r2.cloudflarestorage.com`).
+3. No Render, nas variáveis de ambiente:
+
+   | Variável | Valor |
+   |---|---|
+   | `R2_BUCKET` | `gestor-servicos-media` |
+   | `R2_ENDPOINT` | `https://<accountid>.r2.cloudflarestorage.com` |
+   | `R2_ACCESS_KEY_ID` | (token) |
+   | `R2_SECRET_ACCESS_KEY` | (token) |
+
+4. Redeploy. A partir daí todo upload novo vai pro R2. Fotos enviadas antes
+   disso (que já estavam no disco efêmero) continuam 404 — reenvie ou descarte
+   as OS de teste.
 
 ## Logs e erros
 

@@ -1,6 +1,24 @@
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from django.conf import settings
 from rest_framework import serializers
+
+
+class RelativeImageField(serializers.ImageField):
+    """Serializa sempre o caminho `/media/<arquivo>` — nunca a URL absoluta do
+    storage.
+
+    - A URL absoluta do DRF usa o Host/scheme que chega no Django, que atrás do
+      proxy do Vite / de um túnel vira `http://localhost:5173/...` (conteúdo
+      misto no celular).
+    - Com o storage em R2, `value.url` seria uma URL assinada que expira; o
+      caminho `/media/...` é estável, na mesma origem e o service worker do PWA
+      já cacheia para uso offline. A view `serve_media` faz o proxy do bucket."""
+
+    def to_representation(self, value):
+        if not value:
+            return None
+        return f"{settings.MEDIA_URL}{value.name}"
 
 
 class RoundedDecimalField(serializers.DecimalField):

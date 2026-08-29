@@ -1,11 +1,9 @@
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path, re_path
-from django.views.static import serve as serve_media
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from config.spa import healthz, spa_index
+from config.spa import healthz, serve_media, spa_index
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -19,19 +17,11 @@ urlpatterns = [
     path("api/", include("apps.notifications.urls")),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-else:
-    # App interno, volume baixo: servir a mídia pelo Django é suficiente nesta
-    # fase e evita depender de um bucket/CDN. As fotos e assinaturas ficam no
-    # disco do serviço — efêmeras no plano free do Render (ver DEPLOY.md).
-    urlpatterns += [
-        re_path(
-            r"^media/(?P<path>.*)$",
-            serve_media,
-            {"document_root": settings.MEDIA_ROOT},
-        ),
-    ]
+# Mídia (fotos/assinaturas) servida pela API a partir do storage padrão — disco
+# local em dev, bucket R2 em produção. Ver config.spa.serve_media e DEPLOY.md.
+urlpatterns += [
+    re_path(r"^media/(?P<path>.+)$", serve_media, name="serve_media"),
+]
 
 # Catch-all: qualquer rota que não seja API/admin/media/static/healthz entrega
 # o index.html do SPA. O WhiteNoise já interceptou os arquivos que existem no

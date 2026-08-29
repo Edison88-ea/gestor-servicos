@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from config.drf_fields import CoordinateField, MetersField
+from config.drf_fields import CoordinateField, MetersField, RelativeImageField
 
 from .models import RegistroPonto, SolicitacaoPonto
 
@@ -10,6 +10,7 @@ class RegistroPontoSerializer(serializers.ModelSerializer):
     latitude = CoordinateField()
     longitude = CoordinateField()
     precisao_metros = MetersField()
+    foto = RelativeImageField(required=False, allow_null=True)
 
     class Meta:
         model = RegistroPonto

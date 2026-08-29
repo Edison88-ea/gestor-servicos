@@ -5,12 +5,14 @@ os arquivos estáticos saem pelo WhiteNoise e qualquer rota "de tela" cai aqui,
 devolvendo o index.html para o Vue Router assumir no cliente.
 """
 
+import mimetypes
 import os
 from pathlib import Path
 
 from django.conf import settings
-from django.http import HttpResponse, JsonResponse
-from django.views.decorators.cache import never_cache
+from django.core.files.storage import default_storage
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.views.decorators.cache import cache_control, never_cache
 
 
 @never_cache
@@ -23,6 +25,22 @@ def healthz(request):
             "commit": os.environ.get("RENDER_GIT_COMMIT", "")[:7],
         }
     )
+
+
+@cache_control(private=True, max_age=60 * 60 * 24 * 7)
+def serve_media(request, path):
+    """Serve um arquivo de MEDIA a partir do storage padrão (disco local em dev,
+    bucket R2 em produção). Manter isto na API — em vez de expor o bucket ou
+    usar URL assinada — deixa as URLs /media/... estáveis e na mesma origem, o
+    que o service worker do PWA já sabe cachear para uso offline."""
+    if not path or path.endswith("/") or ".." in path:
+        raise Http404
+    try:
+        arquivo = default_storage.open(path)
+    except (FileNotFoundError, OSError):
+        raise Http404
+    tipo = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    return FileResponse(arquivo, content_type=tipo)
 
 
 @never_cache
