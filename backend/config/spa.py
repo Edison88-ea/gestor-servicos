@@ -5,6 +5,7 @@ os arquivos estáticos saem pelo WhiteNoise e qualquer rota "de tela" cai aqui,
 devolvendo o index.html para o Vue Router assumir no cliente.
 """
 
+import os
 from pathlib import Path
 
 from django.conf import settings
@@ -14,8 +15,14 @@ from django.views.decorators.cache import never_cache
 
 @never_cache
 def healthz(request):
-    """Usado pelo health check do Render."""
-    return JsonResponse({"status": "ok"})
+    """Usado pelo health check do Render. Inclui o commit para saber qual
+    versão está no ar (o Render injeta RENDER_GIT_COMMIT)."""
+    return JsonResponse(
+        {
+            "status": "ok",
+            "commit": os.environ.get("RENDER_GIT_COMMIT", "")[:7],
+        }
+    )
 
 
 @never_cache
