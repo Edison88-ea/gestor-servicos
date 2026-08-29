@@ -40,3 +40,6 @@ services:
         sync: false
       - key: DJANGO_SUPERUSER_EMAIL
         sync: false
+      # Opcional: rastreamento de erros no Sentry (deixe em branco p/ desligar).
+      - key: SENTRY_DSN
+        sync: false

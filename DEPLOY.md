@@ -72,6 +72,22 @@ funcionando entre deploys.
   - storage S3-compatível (Neon tem buckets) — vale quando virar sistema oficial.
 - **Neon free:** o compute do banco também suspende sem uso e religa em ~1 s.
 
+## Logs e erros
+
+- **Log ao vivo:** painel do Render → serviço `gestor-servicos` → aba **Logs**.
+  Mostra tudo que o app imprime: cada chamada da API (`METHOD /api/... → status
+  (ms) [usuário]`, do `APILoggingMiddleware`), tracebacks de erro 500 e o
+  Gunicorn. O plano free guarda só um buffer recente.
+- **Rastreamento de erros (Sentry) — opcional mas recomendado:**
+  1. Conta grátis em https://sentry.io → **Create Project** → plataforma
+     **Django**.
+  2. Copie o **DSN** (`https://...@o0.ingest.sentry.io/0`).
+  3. No Render, variável `SENTRY_DSN` = esse DSN → redeploy.
+  4. A partir daí todo erro 500 aparece no Sentry com traceback, dados da
+     requisição e usuário logado. Dá pra ativar alerta por e-mail em
+     *Settings → Alerts*.
+  - Sem `SENTRY_DSN` definido, o Sentry fica desligado e não pesa em nada.
+
 ## Atualizações
 
 `git push` na branch `main` → o Render rebuilda e redeploya sozinho

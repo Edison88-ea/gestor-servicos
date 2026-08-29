@@ -235,5 +235,27 @@ LOGGING = {
         # Chamadas da API (config.logging_middleware) + erros dos apps.
         "api": {"handlers": ["console", "api_file"], "level": "INFO", "propagate": False},
         "apps": {"handlers": ["console", "api_file"], "level": "INFO", "propagate": False},
+        # Sem isto, o traceback de um erro 500 em produção (DEBUG=False) não
+        # aparece no log do console/Render — o Django só mandaria pro mail_admins.
+        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
     },
 }
+
+
+# Sentry (rastreamento de erros). Opcional: sem SENTRY_DSN definido, não faz
+# nada. Com o DSN, todo erro 500 vai pro painel do Sentry com traceback,
+# request e usuário — e dá pra configurar alerta por e-mail.
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=env("SENTRY_ENVIRONMENT", default="production"),
+        # Anexa o usuário logado ao erro (app interno, ajuda a reproduzir).
+        send_default_pii=True,
+        # Só rastreamento de erros; performance/tracing desligado p/ não gastar
+        # a cota do plano free.
+        traces_sample_rate=0.0,
+    )
