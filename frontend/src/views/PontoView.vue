@@ -58,11 +58,15 @@ async function bater(tipo) {
   mensagem.value = ''
   mensagemErro.value = false
   try {
-    await ponto.registrarPonto(tipo, { ...localizacaoAtual.value, justificativa: justificativa.value })
+    const resultado = await ponto.registrarPonto(tipo, {
+      ...localizacaoAtual.value,
+      justificativa: justificativa.value,
+    })
     justificativa.value = ''
-    mensagem.value = navigator.onLine
-      ? 'Ponto registrado!'
-      : 'Sem conexão: ponto guardado e será enviado automaticamente.'
+    mensagem.value =
+      resultado === 'enviado'
+        ? 'Ponto registrado!'
+        : 'Ponto guardado — será enviado automaticamente assim que houver conexão.'
   } catch (e) {
     const detalhe = e?.response?.data
     mensagemErro.value = true
@@ -152,6 +156,43 @@ onMounted(async () => {
     <p v-if="ponto.filaOffline.length" style="color: var(--warning)">
       {{ ponto.filaOffline.length }} registro(s) aguardando sincronização.
     </p>
+
+    <div
+      v-if="ponto.rejeitados.length"
+      class="card"
+      style="border-left: 4px solid var(--danger); margin-top: 8px"
+    >
+      <strong>Batidas recusadas pelo servidor</strong>
+      <p style="color: var(--text-muted); font-size: 13px; margin: 4px 0 10px">
+        Estas batidas não puderam ser registradas. Abra uma solicitação de ajuste
+        para o gestor corrigir o seu cartão.
+      </p>
+      <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px">
+        <li v-for="(r, i) in ponto.rejeitados" :key="i" style="border-top: 1px solid var(--border); padding-top: 8px">
+          <div style="display: flex; justify-content: space-between">
+            <span>{{ tipos.find((t) => t.valor === r.tipo)?.rotulo }}</span>
+            <span>{{ new Date(r.registrado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }}</span>
+          </div>
+          <div style="color: var(--danger); font-size: 13px; margin-top: 2px">{{ r.motivo }}</div>
+          <div style="display: flex; gap: 8px; margin-top: 6px">
+            <RouterLink
+              to="/ponto/solicitacoes/nova"
+              class="btn-secondary"
+              style="flex: 1; text-align: center; text-decoration: none; font-size: 13px"
+            >
+              Abrir ajuste
+            </RouterLink>
+            <button
+              class="btn-secondary"
+              style="flex: 1; font-size: 13px"
+              @click="ponto.descartarRejeitado(i)"
+            >
+              Descartar
+            </button>
+          </div>
+        </li>
+      </ul>
+    </div>
 
     <div style="display: flex; gap: 8px; margin-top: 16px">
       <RouterLink to="/ponto/indicadores" class="btn-secondary" style="flex: 1; display: block; text-align: center; text-decoration: none">

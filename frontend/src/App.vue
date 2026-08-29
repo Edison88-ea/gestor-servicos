@@ -21,6 +21,7 @@ const notificacoesAbertas = ref(false)
 let intervaloNotificacoes = null
 
 function sincronizarTudo() {
+  if (!navigator.onLine || !auth.isAuthenticated) return
   ponto.sincronizarFila()
   osOffline.sincronizar()
 }
@@ -28,6 +29,14 @@ function sincronizarTudo() {
 function atualizarStatusRede() {
   online.value = navigator.onLine
   if (online.value) sincronizarTudo()
+}
+
+// O evento 'online' do navegador é pouco confiável no celular (dispara quando a
+// interface de rede sobe, não quando há internet de fato). Então também
+// tentamos sincronizar quando o app volta ao primeiro plano e num intervalo
+// fixo — assim uma batida offline não fica presa se o 'online' não disparar.
+function aoVoltarAoPrimeiroPlano() {
+  if (document.visibilityState === 'visible') sincronizarTudo()
 }
 
 function pararPollNotificacoes() {
@@ -40,12 +49,16 @@ function pararPollNotificacoes() {
 function iniciarPollNotificacoes() {
   if (intervaloNotificacoes) return
   notificacoes.atualizarContagem()
-  intervaloNotificacoes = setInterval(() => notificacoes.atualizarContagem(), 60000)
+  intervaloNotificacoes = setInterval(() => {
+    notificacoes.atualizarContagem()
+    sincronizarTudo() // reaproveita o tick para reprocessar a fila offline
+  }, 60000)
 }
 
 onMounted(() => {
   window.addEventListener('online', atualizarStatusRede)
   window.addEventListener('offline', atualizarStatusRede)
+  document.addEventListener('visibilitychange', aoVoltarAoPrimeiroPlano)
 })
 
 // Liga/desliga o poll de notificações conforme o login, sem depender de reload.
@@ -67,6 +80,7 @@ watch(
 onBeforeUnmount(() => {
   window.removeEventListener('online', atualizarStatusRede)
   window.removeEventListener('offline', atualizarStatusRede)
+  document.removeEventListener('visibilitychange', aoVoltarAoPrimeiroPlano)
   pararPollNotificacoes()
 })
 </script>

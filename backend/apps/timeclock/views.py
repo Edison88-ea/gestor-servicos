@@ -59,12 +59,22 @@ def validar_sequencia_ponto(funcionario, tipo, registrado_em):
                 {"tipo": f"'{_T(tipo).label}' já foi registrado agora há pouco."}
             )
 
-    ultimo = do_dia[-1].tipo if do_dia else None
-    if tipo not in TRANSICOES_PONTO.get(ultimo, set()):
-        msg = _MSG_SEQUENCIA.get(
-            (ultimo, tipo), "Essa batida não faz sentido na sequência do dia."
-        )
-        raise ValidationError({"tipo": msg})
+    # Batidas feitas offline podem chegar fora de ordem (ex.: a Saída sincroniza
+    # antes da Saída para intervalo, que no relógio veio antes dela). Então em
+    # vez de olhar só a última batida salva, encaixamos a nova no lugar
+    # cronológico certo e verificamos se a *transição para ela* é válida. Uma
+    # inconsistência entre batidas já salvas não bloqueia a nova.
+    nova = (registrado_em, tipo)
+    sequencia = sorted([(r.registrado_em, r.tipo) for r in do_dia] + [nova])
+    anterior = None
+    for item in sequencia:
+        _, t = item
+        if item == nova and t not in TRANSICOES_PONTO.get(anterior, set()):
+            msg = _MSG_SEQUENCIA.get(
+                (anterior, t), "Essa batida não faz sentido na sequência do dia."
+            )
+            raise ValidationError({"tipo": msg})
+        anterior = t
 
 
 def _intervalo_datas(data_inicio, data_fim):
