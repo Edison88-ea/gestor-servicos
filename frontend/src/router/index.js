@@ -16,6 +16,7 @@ import OrdensServicoView from '../views/OrdensServicoView.vue'
 import NovaOrdemServicoView from '../views/NovaOrdemServicoView.vue'
 import OrdemServicoDetalheView from '../views/OrdemServicoDetalheView.vue'
 import ComprovanteOsView from '../views/ComprovanteOsView.vue'
+import ClientesView from '../views/ClientesView.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView },
@@ -30,6 +31,7 @@ const routes = [
     meta: { auth: true },
   },
   { path: '/gestor', name: 'painel-gestor', component: PainelGestorView, meta: { auth: true, gestor: true } },
+  { path: '/clientes', name: 'clientes', component: ClientesView, meta: { auth: true } },
   { path: '/ordens-servico', name: 'ordens-servico', component: OrdensServicoView, meta: { auth: true } },
   { path: '/ordens-servico/nova', name: 'nova-ordem-servico', component: NovaOrdemServicoView, meta: { auth: true } },
   {

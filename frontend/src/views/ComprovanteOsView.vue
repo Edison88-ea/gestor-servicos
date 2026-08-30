@@ -4,8 +4,8 @@ import { useRouter } from 'vue-router'
 import { useOrdensServicoStore } from '../stores/ordensServico'
 import { formatarMinutos } from '../utils/tempo'
 
-// Nome que aparece no cabeçalho do comprovante. Trocar pelo nome da empresa.
-const EMPRESA = 'Gestor de Serviços'
+// Nome que aparece no cabeçalho do comprovante.
+const EMPRESA = '3D Sistemas'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const store = useOrdensServicoStore()

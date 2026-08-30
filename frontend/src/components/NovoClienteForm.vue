@@ -2,14 +2,18 @@
 import { ref } from 'vue'
 import client from '../api/client'
 
+const props = defineProps({
+  // Quando informado, o formulário edita esse cliente (PATCH) em vez de criar.
+  cliente: { type: Object, default: null },
+})
 const emit = defineEmits(['criado', 'cancelar'])
 
-const nome = ref('')
-const documento = ref('')
-const telefone = ref('')
-const cidade = ref('')
-const estado = ref('')
-const endereco = ref('')
+const nome = ref(props.cliente?.nome ?? '')
+const documento = ref(props.cliente?.documento ?? '')
+const telefone = ref(props.cliente?.telefone ?? '')
+const cidade = ref(props.cliente?.cidade ?? '')
+const estado = ref(props.cliente?.estado ?? '')
+const endereco = ref(props.cliente?.endereco ?? '')
 const salvando = ref(false)
 const erro = ref('')
 
@@ -20,18 +24,21 @@ async function salvar() {
     return
   }
   salvando.value = true
+  const payload = {
+    nome: nome.value,
+    documento: documento.value,
+    telefone: telefone.value,
+    cidade: cidade.value,
+    estado: estado.value,
+    endereco: endereco.value,
+  }
   try {
-    const { data } = await client.post('/clientes/', {
-      nome: nome.value,
-      documento: documento.value,
-      telefone: telefone.value,
-      cidade: cidade.value,
-      estado: estado.value,
-      endereco: endereco.value,
-    })
+    const { data } = props.cliente
+      ? await client.patch(`/clientes/${props.cliente.id}/`, payload)
+      : await client.post('/clientes/', payload)
     emit('criado', data)
   } catch {
-    erro.value = 'Não foi possível cadastrar o cliente. Verifique a conexão e tente novamente.'
+    erro.value = 'Não foi possível salvar o cliente. Verifique a conexão e tente novamente.'
   } finally {
     salvando.value = false
   }
@@ -40,7 +47,7 @@ async function salvar() {
 
 <template>
   <div class="card" style="display: flex; flex-direction: column; gap: 10px">
-    <h2 style="margin: 0">Novo cliente</h2>
+    <h2 style="margin: 0">{{ props.cliente ? 'Editar cliente' : 'Novo cliente' }}</h2>
 
     <label>
       Nome *

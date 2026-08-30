@@ -15,7 +15,7 @@ function filtrar(lista, termo) {
   const t = (termo || '').trim().toLowerCase()
   if (!t) return lista
   return lista.filter((c) =>
-    [c.nome, c.cnpj, c.cidade, c.estado].some((v) => (v || '').toLowerCase().includes(t)),
+    [c.nome, c.documento, c.cidade, c.estado].some((v) => (v || '').toLowerCase().includes(t)),
   )
 }
 
@@ -47,6 +47,23 @@ export const useClientesStore = defineStore('clientes', {
       } finally {
         this.carregando = false
       }
+    },
+
+    async criar(payload) {
+      const { data } = await client.post('/clientes/', payload)
+      this.resultados = [data, ...this.resultados]
+      this.todos = [data, ...this.todos]
+      localStorage.setItem(KEY, JSON.stringify(this.todos))
+      return data
+    },
+
+    async atualizar(id, payload) {
+      const { data } = await client.patch(`/clientes/${id}/`, payload)
+      const troca = (lista) => lista.map((c) => (c.id === data.id ? data : c))
+      this.resultados = troca(this.resultados)
+      this.todos = troca(this.todos)
+      localStorage.setItem(KEY, JSON.stringify(this.todos))
+      return data
     },
 
     async carregarTodosParaCache() {
