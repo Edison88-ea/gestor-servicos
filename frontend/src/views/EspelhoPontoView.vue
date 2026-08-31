@@ -132,7 +132,7 @@ watch(mesReferencia, carregarMes, { immediate: true })
         <div style="font-size: 28px; font-weight: 700">{{ formatarMinutos(espelho.total_minutos) }}</div>
       </div>
 
-      <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
+      <ul class="lista-dias" style="list-style: none; padding: 0; gap: 8px">
         <li v-for="dia in espelho.dias" :key="dia.data" class="card">
           <div style="display: flex; align-items: center; gap: 8px">
             <span v-if="statusDia(dia) === 'ok'" style="color: #0ca30c; font-size: 18px">✓</span>
@@ -157,3 +157,18 @@ watch(mesReferencia, carregarMes, { immediate: true })
     </template>
   </div>
 </template>
+
+<style scoped>
+/* Na tela, dias mais recentes no topo (uso diário no celular). Na impressão,
+   volta à ordem cronológica — padrão de cartão de ponto. O DOM segue
+   cronológico; só a exibição é invertida. */
+.lista-dias {
+  display: flex;
+  flex-direction: column-reverse;
+}
+@media print {
+  .lista-dias {
+    flex-direction: column;
+  }
+}
+</style>
