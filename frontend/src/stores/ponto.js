@@ -3,6 +3,12 @@ import client from '../api/client'
 import { dataLocalISO } from '../utils/tempo'
 import { arredondarCoord, arredondarMetros } from '../utils/geo'
 
+function ontemISO() {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return dataLocalISO(d)
+}
+
 const QUEUE_KEY = 'ponto_fila_offline'
 const REJEITADOS_KEY = 'ponto_rejeitados'
 
@@ -31,7 +37,9 @@ function deveManterNaFila(error) {
 
 export const usePontoStore = defineStore('ponto', {
   state: () => ({
-    registrosHoje: [],
+    // Últimos ~2 dias de batidas. Precisa de ontem+hoje para saber se há uma
+    // jornada que virou a noite (Entrada ontem à noite, ainda sem Saída).
+    registrosRecentes: [],
     filaOffline: carregar(QUEUE_KEY),
     // Batidas que o servidor recusou (4xx — sequência inválida, etc.). Ficam
     // visíveis para o funcionário em vez de sumir caladas; ele pode abrir uma
@@ -39,13 +47,21 @@ export const usePontoStore = defineStore('ponto', {
     rejeitados: carregar(REJEITADOS_KEY),
     sincronizando: false,
   }),
+  getters: {
+    // Só as batidas de hoje — para a lista "Registros de hoje".
+    registrosHoje(state) {
+      const hoje = dataLocalISO()
+      return state.registrosRecentes.filter(
+        (r) => (r.registrado_em || '').slice(0, 10) === hoje,
+      )
+    },
+  },
   actions: {
     async carregarRegistrosHoje() {
-      const hoje = dataLocalISO()
       const { data } = await client.get('/registros-ponto/', {
-        params: { data_inicio: hoje, data_fim: hoje },
+        params: { data_inicio: ontemISO(), data_fim: dataLocalISO() },
       })
-      this.registrosHoje = data.results ?? data
+      this.registrosRecentes = data.results ?? data
     },
 
     _enfileirar(registro) {
@@ -145,6 +161,17 @@ export const usePontoStore = defineStore('ponto', {
     descartarRejeitado(indice) {
       this.rejeitados.splice(indice, 1)
       salvar(REJEITADOS_KEY, this.rejeitados)
+    },
+
+    // Devolve uma batida recusada para a fila (a recusa pode ter sido corrigida
+    // — ex.: agora a lógica aceita turno que virou a noite).
+    async reenviarRejeitado(indice) {
+      const [item] = this.rejeitados.splice(indice, 1)
+      if (!item) return
+      salvar(REJEITADOS_KEY, this.rejeitados)
+      const { motivo, rejeitado_em, ...registro } = item
+      this._enfileirar(registro)
+      await this.sincronizarFila()
     },
 
     async buscarEspelho({ dataInicio, dataFim, funcionario } = {}) {

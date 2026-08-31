@@ -42,38 +42,55 @@ _MSG_SEQUENCIA = {
     (_T.SAIDA, _T.VOLTA_INTERVALO): "Bata a Entrada primeiro.",
 }
 
+# Uma jornada (Entrada -> ... -> Saída) pode cruzar a meia-noite. Mas se ficar
+# aberta por mais de 24h, é quase certeza que o funcionário esqueceu de bater a
+# Saída — a partir daí a próxima batida válida volta a ser Entrada, e o cálculo
+# do cartão ignora as horas da jornada abandonada (o acerto vira Solicitação de
+# ajuste).
+GUARDA_JORNADA = timedelta(hours=24)
+
 
 def validar_sequencia_ponto(funcionario, tipo, registrado_em):
-    """Levanta ValidationError se a batida não faz sentido na sequência do dia
-    ou se é uma duplicata (toque duplo / reenvio da fila offline)."""
-    dia = timezone.localtime(registrado_em).date()
-    do_dia = list(
+    """Levanta ValidationError se a batida não faz sentido na sequência ou se é
+    uma duplicata (toque duplo / reenvio da fila offline).
+
+    A "sequência" é a jornada, não o dia do calendário: uma Saída às 00:21 que
+    fecha uma Entrada das 19:00 do dia anterior é válida."""
+    # Janela larga o suficiente para conter uma jornada que abriu no dia anterior
+    # e ainda pegar batidas offline que cheguem fora de ordem.
+    recentes = list(
         RegistroPonto.objects.filter(
-            funcionario=funcionario, registrado_em__date=dia
+            funcionario=funcionario,
+            registrado_em__gte=registrado_em - timedelta(hours=30),
+            registrado_em__lte=registrado_em + timedelta(hours=30),
         ).order_by("registrado_em")
     )
 
-    for r in do_dia:
+    for r in recentes:
         if r.tipo == tipo and abs((r.registrado_em - registrado_em).total_seconds()) < 90:
             raise ValidationError(
                 {"tipo": f"'{_T(tipo).label}' já foi registrado agora há pouco."}
             )
 
-    # Batidas feitas offline podem chegar fora de ordem (ex.: a Saída sincroniza
-    # antes da Saída para intervalo, que no relógio veio antes dela). Então em
-    # vez de olhar só a última batida salva, encaixamos a nova no lugar
-    # cronológico certo e verificamos se a *transição para ela* é válida. Uma
-    # inconsistência entre batidas já salvas não bloqueia a nova.
+    # Encaixa a nova batida no lugar cronológico e caminha a máquina de estados.
+    # Só a transição *para a batida nova* bloqueia — inconsistência entre batidas
+    # já salvas não trava um registro legítimo.
     nova = (registrado_em, tipo)
-    sequencia = sorted([(r.registrado_em, r.tipo) for r in do_dia] + [nova])
-    anterior = None
-    for item in sequencia:
-        _, t = item
-        if item == nova and t not in TRANSICOES_PONTO.get(anterior, set()):
+    sequencia = sorted([(r.registrado_em, r.tipo) for r in recentes] + [nova])
+    anterior, inicio_jornada = None, None
+    for quando, t in sequencia:
+        # jornada aberta há 24h+ = Saída esquecida: a máquina recomeça
+        if inicio_jornada is not None and quando - inicio_jornada >= GUARDA_JORNADA:
+            anterior, inicio_jornada = None, None
+        if (quando, t) == nova and t not in TRANSICOES_PONTO.get(anterior, set()):
             msg = _MSG_SEQUENCIA.get(
-                (anterior, t), "Essa batida não faz sentido na sequência do dia."
+                (anterior, t), "Essa batida não faz sentido na sequência."
             )
             raise ValidationError({"tipo": msg})
+        if t == _T.ENTRADA:
+            inicio_jornada = quando
+        elif t == _T.SAIDA:
+            inicio_jornada = None
         anterior = t
 
 
@@ -85,35 +102,90 @@ def _intervalo_datas(data_inicio, data_fim):
         atual += timedelta(days=1)
 
 
-def _calcular_dias(funcionario, data_inicio, data_fim, request):
-    """Retorna, para cada dia do período, os registros, minutos trabalhados,
-    minutos esperados e o saldo (extra positivo / faltante negativo)."""
-    registros = RegistroPonto.objects.filter(
-        funcionario=funcionario,
-        registrado_em__date__gte=data_inicio,
-        registrado_em__date__lte=data_fim,
-    ).order_by("registrado_em")
+def _agrupar_jornadas(registros):
+    """Agrupa uma lista de RegistroPonto (ordenada por horário) em jornadas.
 
-    por_dia = defaultdict(list)
-    for registro in registros:
-        dia = timezone.localtime(registro.registrado_em).date()
-        por_dia[dia].append(registro)
+    Uma jornada vai de uma Entrada até a Saída e pode cruzar a meia-noite. Se
+    ficar aberta 24h+ (Saída esquecida), é fechada como `abandonada` e a
+    próxima batida inicia outra. Cada jornada é atribuída ao dia local em que
+    começou."""
+    jornadas = []
+    atual = None
+
+    def fechar(jornada, *, abandonada=False):
+        jornada["abandonada"] = abandonada
+        jornadas.append(jornada)
+
+    for r in registros:
+        if atual is not None and r.registrado_em - atual["inicio"] >= GUARDA_JORNADA:
+            fechar(atual, abandonada=True)
+            atual = None
+
+        if atual is None:
+            atual = {"inicio": r.registrado_em, "registros": [r], "fechada_em": None}
+            if r.tipo != _T.ENTRADA:
+                # batida órfã (Saída sem Entrada): jornada inconsistente de 1 item
+                atual["inconsistente"] = True
+                fechar(atual)
+                atual = None
+            continue
+
+        atual["registros"].append(r)
+        if r.tipo == _T.SAIDA:
+            atual["fechada_em"] = r.registrado_em
+            fechar(atual)
+            atual = None
+
+    if atual is not None:
+        fechar(atual)  # jornada ainda em aberto
+    return jornadas
+
+
+def _minutos_trabalhados(jornada):
+    total = timedelta()
+    inicio_par = None
+    for r in jornada["registros"]:
+        if r.tipo in TIPOS_ENTRADA:
+            inicio_par = r.registrado_em
+        elif r.tipo in TIPOS_SAIDA and inicio_par:
+            total += r.registrado_em - inicio_par
+            inicio_par = None
+    return int(total.total_seconds() // 60)
+
+
+def _calcular_dias(funcionario, data_inicio, data_fim, request):
+    """Para cada dia do período: registros, minutos trabalhados, esperados e
+    saldo. Trabalha por jornada — um turno que vira a noite conta inteiro no
+    dia em que começou."""
+    d_ini = date.fromisoformat(data_inicio)
+    d_fim = date.fromisoformat(data_fim)
+
+    # margem de 1 dia de cada lado para pegar jornadas que cruzam a borda do
+    # período (turno começando no último dia do mês, fechando no 1º do seguinte)
+    registros = list(
+        RegistroPonto.objects.filter(
+            funcionario=funcionario,
+            registrado_em__date__gte=d_ini - timedelta(days=1),
+            registrado_em__date__lte=d_fim + timedelta(days=1),
+        ).order_by("registrado_em")
+    )
+
+    trabalhado_por_dia = defaultdict(int)
+    regs_por_dia = defaultdict(list)
+    dias_em_aberto = set()
+    for jornada in _agrupar_jornadas(registros):
+        dia_j = timezone.localtime(jornada["inicio"]).date()
+        trabalhado_por_dia[dia_j] += _minutos_trabalhados(jornada)
+        regs_por_dia[dia_j].extend(jornada["registros"])
+        if jornada["fechada_em"] is None and not jornada.get("abandonada") and not jornada.get("inconsistente"):
+            dias_em_aberto.add(dia_j)
 
     dias = []
     for dia in _intervalo_datas(data_inicio, data_fim):
-        regs = por_dia.get(dia, [])
-        total_dia = timedelta()
-        inicio_aberto = None
-        for registro in regs:
-            if registro.tipo in TIPOS_ENTRADA:
-                inicio_aberto = registro.registrado_em
-            elif registro.tipo in TIPOS_SAIDA and inicio_aberto:
-                total_dia += registro.registrado_em - inicio_aberto
-                inicio_aberto = None
-
+        regs = sorted(regs_por_dia.get(dia, []), key=lambda r: r.registrado_em)
         folga = dia.weekday() >= 5  # sábado/domingo
         futuro = dia > timezone.localdate()
-        total_minutos = int(total_dia.total_seconds() // 60)
+        total_minutos = trabalhado_por_dia.get(dia, 0)
         # dias futuros ainda não aconteceram: não contam como falta nem extra
         esperado_minutos = 0 if (folga or futuro) else funcionario.carga_horaria_diaria_minutos
         saldo_minutos = total_minutos - esperado_minutos
@@ -127,7 +199,7 @@ def _calcular_dias(funcionario, data_inicio, data_fim, request):
                 "total_minutos": total_minutos,
                 "esperado_minutos": esperado_minutos,
                 "saldo_minutos": saldo_minutos,
-                "em_aberto": inicio_aberto is not None,
+                "em_aberto": dia in dias_em_aberto,
             }
         )
     return dias

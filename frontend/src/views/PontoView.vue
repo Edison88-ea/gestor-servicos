@@ -29,24 +29,35 @@ const TRANSICOES = {
   SAIDA: ['ENTRADA'],
 }
 
-function hojeISO() {
-  return new Date().toISOString().slice(0, 10)
-}
+const GUARDA_JORNADA_MS = 24 * 60 * 60 * 1000
 
-// Último tipo batido hoje, considerando também a fila offline ainda não enviada.
-const ultimoTipoHoje = computed(() => {
-  const doDia = ponto.registrosHoje
-    .filter((r) => (r.registrado_em || '').slice(0, 10) === hojeISO())
+// Estado atual da sequência de ponto, considerando batidas de ontem+hoje e a
+// fila offline. Uma jornada pode ter virado a noite (Entrada ontem, Saída hoje);
+// mas se ficou aberta 24h+ é Saída esquecida e o estado volta a "" (Entrada).
+const ultimoTipo = computed(() => {
+  const todos = [...ponto.registrosRecentes, ...ponto.filaOffline]
+    .filter((r) => r.registrado_em)
     .slice()
     .sort((a, b) => new Date(a.registrado_em) - new Date(b.registrado_em))
-  const naFila = ponto.filaOffline.filter(
-    (r) => (r.registrado_em || '').slice(0, 10) === hojeISO(),
-  )
-  const todos = [...doDia, ...naFila]
-  return todos.length ? todos[todos.length - 1].tipo : ''
+
+  let anterior = ''
+  let inicioJornada = null
+  for (const r of todos) {
+    const quando = new Date(r.registrado_em)
+    if (inicioJornada && quando - inicioJornada >= GUARDA_JORNADA_MS) {
+      anterior = ''
+      inicioJornada = null
+    }
+    if (r.tipo === 'ENTRADA') inicioJornada = quando
+    else if (r.tipo === 'SAIDA') inicioJornada = null
+    anterior = r.tipo
+  }
+  // jornada ainda aberta há 24h+ agora = Saída esquecida
+  if (inicioJornada && Date.now() - inicioJornada >= GUARDA_JORNADA_MS) return ''
+  return anterior
 })
 
-const tiposPermitidos = computed(() => TRANSICOES[ultimoTipoHoje.value] || [])
+const tiposPermitidos = computed(() => TRANSICOES[ultimoTipo.value] || [])
 const proximoTipo = computed(() => tiposPermitidos.value[0] || 'ENTRADA')
 
 function aoAtualizarLocalizacao(dados) {
@@ -164,8 +175,8 @@ onMounted(async () => {
     >
       <strong>Batidas recusadas pelo servidor</strong>
       <p style="color: var(--text-muted); font-size: 13px; margin: 4px 0 10px">
-        Estas batidas não puderam ser registradas. Abra uma solicitação de ajuste
-        para o gestor corrigir o seu cartão.
+        Estas batidas não foram registradas. Tente enviar de novo; se continuar
+        recusando, abra uma solicitação de ajuste para o gestor.
       </p>
       <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px">
         <li v-for="(r, i) in ponto.rejeitados" :key="i" style="border-top: 1px solid var(--border); padding-top: 8px">
@@ -174,17 +185,25 @@ onMounted(async () => {
             <span>{{ new Date(r.registrado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }}</span>
           </div>
           <div style="color: var(--danger); font-size: 13px; margin-top: 2px">{{ r.motivo }}</div>
-          <div style="display: flex; gap: 8px; margin-top: 6px">
+          <div style="display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap">
+            <button
+              class="btn"
+              style="flex: 1; font-size: 13px; min-width: 110px"
+              :disabled="ponto.sincronizando"
+              @click="ponto.reenviarRejeitado(i)"
+            >
+              Tentar de novo
+            </button>
             <RouterLink
               to="/ponto/solicitacoes/nova"
               class="btn-secondary"
-              style="flex: 1; text-align: center; text-decoration: none; font-size: 13px"
+              style="flex: 1; text-align: center; text-decoration: none; font-size: 13px; min-width: 110px"
             >
               Abrir ajuste
             </RouterLink>
             <button
               class="btn-secondary"
-              style="flex: 1; font-size: 13px"
+              style="flex: 1; font-size: 13px; min-width: 90px"
               @click="ponto.descartarRejeitado(i)"
             >
               Descartar
