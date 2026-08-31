@@ -1,13 +1,17 @@
 import io
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import TestCase
 from PIL import Image
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Usuario
 
-from .models import AssinaturaProjeto, Etapa, Projeto
+from .models import AssinaturaProjeto, Etapa, HistoricoEtapa, Projeto
 
 
 def imagem_falsa(nome="assinatura.png"):
@@ -135,3 +139,60 @@ class AssinaturaProjetoTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data["papel_display"], "Supervisor de processos")
         self.assertEqual(self.projeto.assinaturas.count(), 1)
+
+
+DUMP_LEGADO = [
+    {"model": "core.projeto", "pk": 1, "fields": {
+        "nome": "Mudança Splice", "descricao": "Mudar linha", "data_inicio": "2026-01-11"}},
+    {"model": "core.projeto", "pk": 5, "fields": {
+        "nome": "Projeto Inovation", "descricao": "", "data_inicio": "2026-06-11"}},
+    {"model": "core.etapa", "pk": 1, "fields": {
+        "projeto": 1, "nome": "Infra", "meta": 10, "realizado": 10, "foto": "comprovantes/a.png"}},
+    {"model": "core.etapa", "pk": 3, "fields": {
+        "projeto": 1, "nome": "Cabo 220v", "meta": 8, "realizado": 4, "foto": ""}},
+    {"model": "core.etapa", "pk": 53, "fields": {
+        "projeto": 5, "nome": "Infra elétrica", "meta": 4, "realizado": 0, "foto": ""}},
+    {"model": "core.historicoetapa", "pk": 1, "fields": {
+        "etapa": 3, "usuario": 1, "data": "2026-01-11T12:48:50.130Z",
+        "quantidade_anterior": 0, "quantidade_nova": 4}},
+]
+
+
+class ImportarLegadoTests(TestCase):
+    def _rodar(self, extra=None):
+        with TemporaryDirectory() as tmp:
+            arq = Path(tmp) / "dump.json"
+            arq.write_text(json.dumps(DUMP_LEGADO), encoding="utf-8")
+            media = Path(tmp) / "media" / "comprovantes"
+            media.mkdir(parents=True)
+            Image.new("RGB", (8, 8), "white").save(media / "a.png")
+            args = [str(arq), "--media", str(Path(tmp) / "media"), *(extra or [])]
+            call_command("importar_obras_legado", *args)
+
+    def test_importa_projetos_etapas_historico_e_status(self):
+        self._rodar()
+        self.assertEqual(Projeto.objects.count(), 2)
+        self.assertEqual(Etapa.objects.count(), 3)
+
+        splice = Projeto.objects.get(nome="Mudança Splice")
+        self.assertEqual(splice.numero, "PRJ000001")
+        self.assertEqual(str(splice.data_mudanca), "2026-01-11")
+        # 14 de 18 pontos -> em andamento
+        self.assertEqual(splice.status, Projeto.Status.EM_ANDAMENTO)
+        self.assertEqual(Projeto.objects.get(nome="Projeto Inovation").status,
+                         Projeto.Status.PLANEJADO)
+
+        # histórico preserva a data original (não vira "agora")
+        hist = HistoricoEtapa.objects.get()
+        self.assertEqual(hist.data.year, 2026)
+        self.assertEqual(hist.data.month, 1)
+        self.assertEqual((hist.quantidade_anterior, hist.quantidade_nova), (0, 4))
+
+        # foto da etapa 1 foi importada
+        self.assertEqual(Etapa.objects.get(nome="Infra").fotos.count(), 1)
+
+    def test_limpar_remove_antes_de_importar(self):
+        Projeto.objects.create(nome="Obra velha")
+        self._rodar(extra=["--limpar"])
+        self.assertFalse(Projeto.objects.filter(nome="Obra velha").exists())
+        self.assertEqual(Projeto.objects.count(), 2)

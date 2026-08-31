@@ -218,16 +218,34 @@ code-splitting por rota — ver comentário em `router/index.js`).
 
 ## 4. Migração de dados do PythonAnywhere
 
-Volume pequeno (poucos projetos, 3 fotos). Comando dedicado:
+Volume real: **5 projetos, 51 etapas, 35 históricos, 14 fotos**. Comando dedicado
+`apps/projects/management/commands/importar_obras_legado.py` (feito e testado com
+o dump real):
 
-1. No PythonAnywhere: `manage.py dumpdata core -o obras_legado.json`.
-2. `apps/projects/management/commands/importar_obras_legado.py`:
-   - `Projeto`: `nome`, `descricao`; `data_inicio` (legado) → `data_mudanca`.
-   - `Etapa`: `nome`, `meta`, `realizado`; `foto` → cria `FotoEtapa`.
-   - `HistoricoEtapa`: casa `usuario` por `username` (senão fica null).
-3. Copiar `media/comprovantes/*` do PA e re-subir no R2 nos caminhos novos;
-   corrigir `FotoEtapa.imagem`.
-4. Validar no app, congelar o PA, desligar.
+- `Projeto`: `nome`, `descricao` iguais; `data_inicio` → `data_mudanca`;
+  `tipo = MUDANCA_LAYOUT`; `status` calculado do progresso (0 → planejado,
+  100 → concluído, resto → em andamento).
+- `Etapa`: `nome`, `meta`, `realizado` iguais; `ordem` pela ordem do dump.
+  `tipo_ponto` e `localizacao` ficam em branco (o legado não tinha) — ajustar
+  depois pela tela de etapas.
+- `foto` → cria `FotoEtapa` **se** `--media` apontar para a pasta com o arquivo;
+  senão o comando lista as puladas.
+- `HistoricoEtapa`: `data` original preservada (via `.update()`, driblando o
+  `auto_now_add`); `usuario` = `--usuario <username>` ou nulo (o dump não traz
+  os usuários do sistema antigo).
+
+### Passo a passo (rodar contra o Neon de produção)
+
+1. No PythonAnywhere: `cd ~/gestor_obras && python manage.py dumpdata core --indent 2 -o ~/obras_legado.json`
+2. Baixar `~/obras_legado.json` e a pasta `~/gestor_obras/media/` (aba *Files*).
+3. Subir os dois para a máquina que roda o deploy (ou rodar via shell do Render).
+4. Com `DATABASE_URL` apontando para o Neon:
+   `python manage.py importar_obras_legado obras_legado.json --media ./media`
+   (o comando comprime as fotos e as grava no R2 pelo storage padrão).
+5. Conferir no app (`/obras`), congelar o PythonAnywhere, desligar.
+
+> `--limpar` apaga os `Projeto` existentes antes — usar só se precisar repetir a
+> importação do zero.
 
 ---
 
@@ -239,7 +257,7 @@ Volume pequeno (poucos projetos, 3 fotos). Comando dedicado:
 | **2 — Frontend base** ✔ | `stores/obras.js`, `ObrasView` (lista + contadores + progresso), `NovaObraView`, `ObraDetalheView` (controle +/- de progresso + histórico), rotas, item "Obras" no menu |
 | **3 — Etapas, plantas e fotos** ✔ | `ObraEtapasView` (CRUD etapas, GESTOR), anexo/visualização de plantas PDF, envio de fotos por etapa — entregue junto da Fase 2 |
 | **4 — Relatório e assinaturas** ✔ | `RelatorioObraView` (print/PDF via `window.print`), action `projetos/{id}/assinaturas` + coleta com `AssinaturaCanvas` no detalhe |
-| **5 — Migração** | comando `importar_obras_legado`, migração das imagens p/ R2, validação, desligar PythonAnywhere |
+| **5 — Migração** ✔ | comando `importar_obras_legado` (feito e testado com o dump real: 5 projetos / 51 etapas / 35 históricos). Falta só executar contra o Neon com a pasta `media/` e desligar o PythonAnywhere |
 
 ---
 

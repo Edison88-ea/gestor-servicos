@@ -53,8 +53,11 @@ class Projeto(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.numero:
-            ultimo = Projeto.objects.order_by("-id").first()
-            proximo = (ultimo.id + 1) if ultimo else 1
+            # Baseado no maior numero existente (e não no id), para a numeração
+            # não pular quando registros são apagados — caso da importação do
+            # sistema legado, que roda com --limpar.
+            ultimo = Projeto.objects.exclude(numero="").order_by("-numero").first()
+            proximo = (int(ultimo.numero[3:]) + 1) if ultimo else 1
             self.numero = f"PRJ{proximo:06d}"
         super().save(*args, **kwargs)
 
