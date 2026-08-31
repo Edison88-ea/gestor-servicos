@@ -8,6 +8,7 @@ from .catalogos import AREAS_AFETADAS
 from .models import Etapa, HistoricoEtapa, Projeto
 from .permissions import GestorOuAdminEscreve
 from .serializers import (
+    AssinaturaProjetoSerializer,
     EtapaSerializer,
     FotoEtapaSerializer,
     PlantaProjetoSerializer,
@@ -58,6 +59,17 @@ class ProjetoViewSet(viewsets.ModelViewSet):
     def plantas(self, request, pk=None):
         projeto = self.get_object()
         serializer = PlantaProjetoSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(projeto=projeto)
+        return Response(serializer.data, status=201)
+
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
+    def assinaturas(self, request, pk=None):
+        """Assinatura do "ciente da alteração" / "supervisor de processos".
+        Liberado a qualquer autenticado — a assinatura é coletada em campo, como
+        a assinatura do cliente numa OS."""
+        projeto = self.get_object()
+        serializer = AssinaturaProjetoSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save(projeto=projeto)
         return Response(serializer.data, status=201)

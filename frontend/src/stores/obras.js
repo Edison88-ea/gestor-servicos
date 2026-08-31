@@ -115,6 +115,17 @@ export const useObrasStore = defineStore('obras', {
       return data
     },
 
+    async adicionarAssinatura(projetoId, { papel, nome }, blob) {
+      const fd = new FormData()
+      fd.append('papel', papel)
+      fd.append('nome', nome)
+      fd.append('assinatura', blob, 'assinatura.png')
+      const { data } = await client.post(`/projetos/${projetoId}/assinaturas/`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return data
+    },
+
     // --- Plantas ---
     async adicionarPlanta(projetoId, arquivo, { pagina, descricao } = {}) {
       const fd = new FormData()

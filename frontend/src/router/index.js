@@ -21,6 +21,7 @@ import ObrasView from '../views/ObrasView.vue'
 import NovaObraView from '../views/NovaObraView.vue'
 import ObraDetalheView from '../views/ObraDetalheView.vue'
 import ObraEtapasView from '../views/ObraEtapasView.vue'
+import RelatorioObraView from '../views/RelatorioObraView.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView },
@@ -59,6 +60,13 @@ const routes = [
     name: 'obra-etapas',
     component: ObraEtapasView,
     meta: { auth: true, gestor: true },
+    props: true,
+  },
+  {
+    path: '/obras/:id/relatorio',
+    name: 'obra-relatorio',
+    component: RelatorioObraView,
+    meta: { auth: true },
     props: true,
   },
   {

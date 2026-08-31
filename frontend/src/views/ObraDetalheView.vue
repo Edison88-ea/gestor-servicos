@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useObrasStore } from '../stores/obras'
+import AssinaturaCanvas from '../components/AssinaturaCanvas.vue'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const router = useRouter()
@@ -14,6 +15,17 @@ const erro = ref('')
 const opcoes = ref(null)
 const historicoAberto = ref(null) // id da etapa com histórico expandido
 const salvandoStatus = ref(false)
+
+const assinando = ref(false)
+const assinaturaPad = ref(null)
+const assinaturaPapel = ref('CIENTE')
+const assinaturaNome = ref('')
+const salvandoAssinatura = ref(false)
+
+const PAPEL_ROTULO = {
+  CIENTE: 'Ciente da alteração',
+  SUPERVISOR: 'Supervisor de processos',
+}
 
 const podeGerenciar = computed(() => ['GESTOR', 'ADMIN'].includes(auth.user?.papel))
 
@@ -108,6 +120,34 @@ async function mudarStatus(evento) {
   }
 }
 
+async function salvarAssinatura() {
+  if (!assinaturaNome.value.trim()) {
+    erro.value = 'Informe o nome de quem está assinando.'
+    return
+  }
+  if (assinaturaPad.value?.vazio()) {
+    erro.value = 'A assinatura está em branco.'
+    return
+  }
+  salvandoAssinatura.value = true
+  try {
+    const blob = await assinaturaPad.value.paraArquivo()
+    const nova = await store.adicionarAssinatura(
+      obra.value.id,
+      { papel: assinaturaPapel.value, nome: assinaturaNome.value.trim() },
+      blob,
+    )
+    obra.value.assinaturas = [...(obra.value.assinaturas || []), nova]
+    assinando.value = false
+    assinaturaNome.value = ''
+    erro.value = ''
+  } catch {
+    erro.value = 'Não foi possível salvar a assinatura.'
+  } finally {
+    salvandoAssinatura.value = false
+  }
+}
+
 function recalcularTotais() {
   const etapas = obra.value.etapas || []
   const meta = etapas.reduce((s, e) => s + e.meta, 0)
@@ -128,12 +168,12 @@ onMounted(async () => {
     <button class="btn-secondary" style="border: none; background: none" @click="router.push('/obras')">← Obras</button>
     <strong>Detalhe</strong>
     <button
-      v-if="obra && podeGerenciar"
+      v-if="obra"
       type="button"
       style="border: none; background: none; color: var(--accent); font-weight: 600"
-      @click="router.push(`/obras/${obra.id}/etapas`)"
+      @click="router.push(`/obras/${obra.id}/relatorio`)"
     >
-      Etapas
+      Relatório
     </button>
   </div>
 
@@ -186,7 +226,16 @@ onMounted(async () => {
       </div>
     </section>
 
-    <h3 style="margin: 16px 0 8px">Etapas</h3>
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin: 16px 0 8px">
+      <h3 style="margin: 0">Etapas</h3>
+      <RouterLink
+        v-if="podeGerenciar && obra.etapas?.length"
+        :to="`/obras/${obra.id}/etapas`"
+        style="font-size: 13px"
+      >
+        Editar
+      </RouterLink>
+    </div>
     <p v-if="!obra.etapas?.length" style="color: var(--text-muted)">
       Nenhuma etapa.
       <RouterLink v-if="podeGerenciar" :to="`/obras/${obra.id}/etapas`">Definir metas</RouterLink>
@@ -279,5 +328,54 @@ onMounted(async () => {
         <input type="file" accept=".pdf,image/*" style="display: none" @change="enviarPlanta" />
       </label>
     </div>
+
+    <h3 style="margin: 16px 0 8px">Assinaturas</h3>
+    <div
+      v-for="a in obra.assinaturas"
+      :key="a.id"
+      class="card"
+      style="margin-bottom: 8px; display: flex; gap: 12px; align-items: center"
+    >
+      <img
+        :src="a.assinatura"
+        :alt="a.nome"
+        style="height: 48px; border: 1px solid var(--border); border-radius: 4px; background: white"
+      />
+      <div style="font-size: 14px">
+        <strong>{{ a.nome }}</strong>
+        <div style="color: var(--text-muted); font-size: 12px">{{ a.papel_display }}</div>
+      </div>
+    </div>
+
+    <div v-if="assinando" class="card" style="display: flex; flex-direction: column; gap: 8px">
+      <select
+        v-model="assinaturaPapel"
+        style="padding: 9px; border-radius: 8px; border: 1px solid var(--border)"
+      >
+        <option v-for="(rotulo, valor) in PAPEL_ROTULO" :key="valor" :value="valor">{{ rotulo }}</option>
+      </select>
+      <input
+        v-model="assinaturaNome"
+        type="text"
+        placeholder="Nome de quem assina"
+        style="padding: 9px; border-radius: 8px; border: 1px solid var(--border)"
+      />
+      <AssinaturaCanvas ref="assinaturaPad" />
+      <div style="display: flex; gap: 8px">
+        <button class="btn" style="flex: 1" :disabled="salvandoAssinatura" @click="salvarAssinatura">
+          {{ salvandoAssinatura ? 'Salvando...' : 'Salvar assinatura' }}
+        </button>
+        <button class="btn-secondary" @click="assinando = false">Cancelar</button>
+      </div>
+    </div>
+    <button
+      v-else
+      type="button"
+      class="btn-secondary"
+      style="width: 100%"
+      @click="assinando = true"
+    >
+      + Coletar assinatura
+    </button>
   </div>
 </template>

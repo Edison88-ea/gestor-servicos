@@ -238,7 +238,7 @@ Volume pequeno (poucos projetos, 3 fotos). Comando dedicado:
 | **1 — Backend base** ✔ | app `apps.projects`, models, migração, admin, serializers, viewsets, urls, `RelativeFileField`, util de compressão, 8 tests |
 | **2 — Frontend base** ✔ | `stores/obras.js`, `ObrasView` (lista + contadores + progresso), `NovaObraView`, `ObraDetalheView` (controle +/- de progresso + histórico), rotas, item "Obras" no menu |
 | **3 — Etapas, plantas e fotos** ✔ | `ObraEtapasView` (CRUD etapas, GESTOR), anexo/visualização de plantas PDF, envio de fotos por etapa — entregue junto da Fase 2 |
-| **4 — Relatório e assinaturas** | `RelatorioObraView` (print/PDF), `AssinaturaProjeto` (ciente / supervisor) — opcional |
+| **4 — Relatório e assinaturas** ✔ | `RelatorioObraView` (print/PDF via `window.print`), action `projetos/{id}/assinaturas` + coleta com `AssinaturaCanvas` no detalhe |
 | **5 — Migração** | comando `importar_obras_legado`, migração das imagens p/ R2, validação, desligar PythonAnywhere |
 
 ---

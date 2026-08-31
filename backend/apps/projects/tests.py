@@ -1,9 +1,19 @@
+import io
+
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from PIL import Image
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Usuario
 
-from .models import Etapa, Projeto
+from .models import AssinaturaProjeto, Etapa, Projeto
+
+
+def imagem_falsa(nome="assinatura.png"):
+    buffer = io.BytesIO()
+    Image.new("RGB", (10, 10), "white").save(buffer, format="PNG")
+    return SimpleUploadedFile(nome, buffer.getvalue(), content_type="image/png")
 
 
 class ProjetoModelTests(TestCase):
@@ -101,3 +111,27 @@ class EtapaProgressoTests(TestCase):
             f"/api/etapas/{self.etapa.id}/", {"meta": 100}, format="json"
         )
         self.assertEqual(resp.status_code, 403)
+
+
+class AssinaturaProjetoTests(TestCase):
+    def setUp(self):
+        self.tec = Usuario.objects.create_user(
+            username="tec", password="x", papel=Usuario.Papel.TECNICO
+        )
+        self.projeto = Projeto.objects.create(nome="Volks")
+        self.api = APIClient()
+        self.api.force_authenticate(self.tec)
+
+    def test_tecnico_coleta_assinatura_em_campo(self):
+        resp = self.api.post(
+            f"/api/projetos/{self.projeto.id}/assinaturas/",
+            {
+                "papel": AssinaturaProjeto.Papel.SUPERVISOR,
+                "nome": "Cristiano Almeida",
+                "assinatura": imagem_falsa(),
+            },
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data["papel_display"], "Supervisor de processos")
+        self.assertEqual(self.projeto.assinaturas.count(), 1)
