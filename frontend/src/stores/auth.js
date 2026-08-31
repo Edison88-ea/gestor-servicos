@@ -17,9 +17,19 @@ export const useAuthStore = defineStore('auth', {
       localStorage.setItem('refresh_token', data.refresh)
       this.accessToken = data.access
 
-      const { data: me } = await client.get('/usuarios/me/')
-      this.user = me
-      localStorage.setItem('user', JSON.stringify(me))
+      await this.atualizarPerfil()
+    },
+    async atualizarPerfil() {
+      // Revalida o usuário logado (papel, jornada, equipe...) contra o servidor.
+      // Chamado no login e na abertura do app — sem isto, uma mudança de papel
+      // feita no admin só valeria no próximo login.
+      try {
+        const { data: me } = await client.get('/usuarios/me/')
+        this.user = me
+        localStorage.setItem('user', JSON.stringify(me))
+      } catch {
+        // sem rede: mantém o perfil que já está em cache
+      }
     },
     logout() {
       localStorage.removeItem('access_token')

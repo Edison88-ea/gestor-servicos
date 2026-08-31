@@ -66,6 +66,7 @@ watch(
   () => auth.isAuthenticated,
   (autenticado) => {
     if (autenticado) {
+      if (navigator.onLine) auth.atualizarPerfil()
       sincronizarTudo()
       if (navigator.onLine) clientes.carregarTodosParaCache()
       iniciarPollNotificacoes()
