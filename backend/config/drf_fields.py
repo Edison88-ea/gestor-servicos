@@ -21,6 +21,17 @@ class RelativeImageField(serializers.ImageField):
         return f"{settings.MEDIA_URL}{value.name}"
 
 
+class RelativeFileField(serializers.FileField):
+    """Igual à ``RelativeImageField``, mas para arquivos quaisquer (ex.: o PDF da
+    planta de uma obra). Serializa sempre o caminho estável ``/media/<arquivo>``
+    servido pela API, nunca a URL assinada do bucket."""
+
+    def to_representation(self, value):
+        if not value:
+            return None
+        return f"{settings.MEDIA_URL}{value.name}"
+
+
 class RoundedDecimalField(serializers.DecimalField):
     """DecimalField que arredonda a entrada antes de validar.
 
