@@ -88,12 +88,16 @@ class Etapa(models.Model):
 
     class TipoPonto(models.TextChoices):
         REDE = "REDE", "Ponto de rede"
-        AR = "AR", "Ponto de ar"
-        ENERGIA = "ENERGIA", "Ponto de energia"
+        TOMADA_KEYSTONE = "TOMADA_KEYSTONE", "Tomada keystone"
+        FIBRA_OTICA = "FIBRA_OTICA", "Fibra ótica"
         TELEFONE = "TELEFONE", "Ponto de telefone"
+        AR = "AR", "Ponto de ar"
         PPR = "PPR", "Ponto de PPR (pneumática)"
-        REDE_ESTABILIZADA = "REDE_ESTABILIZADA", "Rede estabilizada elétrica"
+        ENERGIA = "ENERGIA", "Ponto de energia"
+        ELETRICA_127 = "ELETRICA_127", "Elétrica 127V"
         ELETRICA_220 = "ELETRICA_220", "Elétrica 220V"
+        ELETRICA_380 = "ELETRICA_380", "Elétrica 380V"
+        REDE_ESTABILIZADA = "REDE_ESTABILIZADA", "Rede estabilizada elétrica"
         OUTRO = "OUTRO", "Outro"
 
     projeto = models.ForeignKey(Projeto, related_name="etapas", on_delete=models.CASCADE)

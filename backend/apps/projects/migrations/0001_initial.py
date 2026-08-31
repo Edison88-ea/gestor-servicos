@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('nome', models.CharField(max_length=200)),
-                ('tipo_ponto', models.CharField(blank=True, choices=[('REDE', 'Ponto de rede'), ('AR', 'Ponto de ar'), ('ENERGIA', 'Ponto de energia'), ('TELEFONE', 'Ponto de telefone'), ('PPR', 'Ponto de PPR (pneumática)'), ('REDE_ESTABILIZADA', 'Rede estabilizada elétrica'), ('ELETRICA_220', 'Elétrica 220V'), ('OUTRO', 'Outro')], max_length=20)),
+                ('tipo_ponto', models.CharField(blank=True, choices=[('REDE', 'Ponto de rede'), ('TOMADA_KEYSTONE', 'Tomada keystone'), ('FIBRA_OTICA', 'Fibra ótica'), ('TELEFONE', 'Ponto de telefone'), ('AR', 'Ponto de ar'), ('PPR', 'Ponto de PPR (pneumática)'), ('ENERGIA', 'Ponto de energia'), ('ELETRICA_127', 'Elétrica 127V'), ('ELETRICA_220', 'Elétrica 220V'), ('ELETRICA_380', 'Elétrica 380V'), ('REDE_ESTABILIZADA', 'Rede estabilizada elétrica'), ('OUTRO', 'Outro')], max_length=20)),
                 ('localizacao', models.CharField(blank=True, max_length=200)),
                 ('meta', models.PositiveIntegerField(default=1, verbose_name='Quantidade prevista')),
                 ('realizado', models.PositiveIntegerField(default=0, verbose_name='Quantidade instalada')),
