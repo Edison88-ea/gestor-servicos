@@ -54,7 +54,8 @@ export const useObrasStore = defineStore('obras', {
     },
 
     async carregarOpcoes() {
-      if (this.opcoes) return this.opcoes
+      // Usa o cache na hora, mas sempre revalida no servidor — senão uma
+      // mudança nos tipos de ponto / áreas nunca chega em quem já abriu a tela.
       try {
         const { data } = await client.get('/projetos/opcoes/')
         this.opcoes = data

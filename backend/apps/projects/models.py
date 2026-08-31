@@ -91,7 +91,7 @@ class Etapa(models.Model):
         AR = "AR", "Ponto de ar"
         ENERGIA = "ENERGIA", "Ponto de energia"
         TELEFONE = "TELEFONE", "Ponto de telefone"
-        LPRS = "LPRS", "Ponto de LPRS"
+        PPR = "PPR", "Ponto de PPR (pneumática)"
         REDE_ESTABILIZADA = "REDE_ESTABILIZADA", "Rede estabilizada elétrica"
         ELETRICA_220 = "ELETRICA_220", "Elétrica 220V"
         OUTRO = "OUTRO", "Outro"

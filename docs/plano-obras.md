@@ -18,7 +18,7 @@ WeasyPrint) — só o **modelo de dados**, evoluído. Fonte de dados: o document
 | Tipo de mudança ("instalação de projeto") | `Projeto.tipo` |
 | Data da mudança (04/08/26) / Término (30/09/26) | `Projeto.data_mudanca` / `data_termino_previsto` |
 | Área afetada (checkboxes: VOLKS, ADM, Manutenção, Logística…) | `Projeto.areas_afetadas` (JSON) |
-| Cada tipo de ponto do escopo (Rede, Ar, Energia, Telefone, LPRS, Rede Estabilizada, Elétrica 220V) | `Etapa` (uma por tipo/trecho) |
+| Cada tipo de ponto do escopo (Rede, Ar, Energia, Telefone, PPR, Rede Estabilizada, Elétrica 220V) | `Etapa` (uma por tipo/trecho) |
 | Quantidade prevista ("PONTO DE REDE (2x)") | `Etapa.meta` |
 | Quantidade instalada | `Etapa.realizado` → `Projeto.progresso` |
 | Setor/linha na planta ("Patagonia - Alternador") | `Etapa.localizacao` |
@@ -86,7 +86,7 @@ class Etapa(models.Model):
         AR = "AR", "Ponto de ar"
         ENERGIA = "ENERGIA", "Ponto de energia"
         TELEFONE = "TELEFONE", "Ponto de telefone"
-        LPRS = "LPRS", "Ponto de LPRS"
+        PPR = "PPR", "Ponto de PPR (pneumática)"
         REDE_ESTABILIZADA = "REDE_ESTABILIZADA", "Rede estabilizada elétrica"
         ELETRICA_220 = "ELETRICA_220", "Elétrica 220V"
         OUTRO = "OUTRO", "Outro"
