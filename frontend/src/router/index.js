@@ -54,12 +54,12 @@ const routes = [
     props: true,
   },
   { path: '/obras', name: 'obras', component: ObrasView, meta: { auth: true } },
-  { path: '/obras/nova', name: 'nova-obra', component: NovaObraView, meta: { auth: true, gestor: true } },
+  { path: '/obras/nova', name: 'nova-obra', component: NovaObraView, meta: { auth: true, obra: true } },
   {
     path: '/obras/:id/etapas',
     name: 'obra-etapas',
     component: ObraEtapasView,
-    meta: { auth: true, gestor: true },
+    meta: { auth: true, obra: true },
     props: true,
   },
   {
@@ -83,6 +83,9 @@ const router = createRouter({
   routes,
 })
 
+const PAPEIS_GESTAO = ['GESTOR', 'RH', 'ADMIN']
+const PAPEIS_OBRA = ['ENCARREGADO', 'GESTOR', 'ADMIN']
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (to.meta.auth && !auth.isAuthenticated) {
@@ -91,7 +94,11 @@ router.beforeEach((to) => {
   if (to.name === 'login' && auth.isAuthenticated) {
     return { name: 'ponto' }
   }
-  if (to.meta.gestor && auth.user?.papel === 'TECNICO') {
+  const papel = auth.user?.papel
+  if (to.meta.gestor && !PAPEIS_GESTAO.includes(papel)) {
+    return { name: 'ponto' }
+  }
+  if (to.meta.obra && !PAPEIS_OBRA.includes(papel)) {
     return { name: 'ponto' }
   }
 })

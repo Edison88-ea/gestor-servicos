@@ -27,7 +27,7 @@ const PAPEL_ROTULO = {
   SUPERVISOR: 'Supervisor de processos',
 }
 
-const podeGerenciar = computed(() => ['GESTOR', 'ADMIN'].includes(auth.user?.papel))
+const podeGerenciar = computed(() => ['ENCARREGADO', 'GESTOR', 'ADMIN'].includes(auth.user?.papel))
 
 const STATUS_ROTULO = {
   PLANEJADO: 'Planejado',

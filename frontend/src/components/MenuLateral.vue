@@ -58,7 +58,7 @@ function sair() {
       </div>
 
       <nav style="padding: 8px 0; display: flex; flex-direction: column">
-        <button v-if="auth.user?.papel !== 'TECNICO'" type="button" class="item-menu" @click="irPara('/gestor')">Painel</button>
+        <button v-if="['GESTOR', 'RH', 'ADMIN'].includes(auth.user?.papel)" type="button" class="item-menu" @click="irPara('/gestor')">Painel</button>
         <button type="button" class="item-menu" @click="irPara('/')">Bater Ponto</button>
         <button type="button" class="item-menu" @click="irPara('/ponto/indicadores')">Indicadores</button>
         <button type="button" class="item-menu" @click="irPara('/ponto/espelho')">Cartão Ponto</button>

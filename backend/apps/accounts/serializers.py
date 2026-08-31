@@ -13,6 +13,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "last_name",
             "email",
             "papel",
+            "encarregado_responsavel",
             "telefone",
             "cargo",
             "periodo1_inicio",

@@ -8,7 +8,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const store = useSolicitacoesPontoStore()
 
-const ehGestor = computed(() => auth.user?.papel !== 'TECNICO')
+const ehGestor = computed(() => ['GESTOR', 'RH', 'ADMIN'].includes(auth.user?.papel))
 const filtro = ref('PENDENTE')
 const respostas = ref({})
 const processando = ref({})

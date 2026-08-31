@@ -50,3 +50,56 @@ class ExportacaoComprovanteTests(TestCase):
             self._os_concluida(datetime(2026, 8, d, 12, 0))
         resp = self.api.get("/api/ordens-servico/?status=CONCLUIDA&page_size=500")
         self.assertEqual(len(resp.data["results"]), 25)
+
+
+class EncarregadoTests(TestCase):
+    def setUp(self):
+        self.encarregado = Usuario.objects.create_user(
+            username="enc", password="x", papel=Usuario.Papel.ENCARREGADO
+        )
+        self.auxiliar = Usuario.objects.create_user(
+            username="aux", password="x", papel=Usuario.Papel.TECNICO,
+            encarregado_responsavel=self.encarregado,
+        )
+        self.outro = Usuario.objects.create_user(
+            username="outro", password="x", papel=Usuario.Papel.TECNICO
+        )
+        self.cliente = Cliente.objects.create(nome="ACME")
+        self.api = APIClient()
+
+    def _os(self, tecnico):
+        return OrdemServico.objects.create(
+            cliente=self.cliente, tecnico=tecnico, criado_por=tecnico, tipo_servico="X"
+        )
+
+    def test_encarregado_ve_as_proprias_e_as_da_equipe_mas_nao_as_de_fora(self):
+        minha = self._os(self.encarregado)
+        do_aux = self._os(self.auxiliar)
+        de_fora = self._os(self.outro)
+
+        self.api.force_authenticate(self.encarregado)
+        ids = {o["id"] for o in self.api.get("/api/ordens-servico/").data["results"]}
+        self.assertEqual(ids, {minha.id, do_aux.id})
+        self.assertNotIn(de_fora.id, ids)
+
+    def test_auxiliar_continua_vendo_so_as_proprias(self):
+        do_aux = self._os(self.auxiliar)
+        self._os(self.encarregado)
+        self.api.force_authenticate(self.auxiliar)
+        ids = {o["id"] for o in self.api.get("/api/ordens-servico/").data["results"]}
+        self.assertEqual(ids, {do_aux.id})
+
+    def test_encarregado_abre_os_e_ela_fica_atribuida_a_ele(self):
+        self.api.force_authenticate(self.encarregado)
+        resp = self.api.post(
+            "/api/ordens-servico/",
+            {"cliente": self.cliente.id, "tipo_servico": "Manutenção"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data["tecnico"], self.encarregado.id)
+
+    def test_encarregado_pode_criar_obra(self):
+        self.api.force_authenticate(self.encarregado)
+        resp = self.api.post("/api/projetos/", {"nome": "Obra do encarregado"}, format="json")
+        self.assertEqual(resp.status_code, 201, resp.data)

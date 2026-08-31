@@ -74,7 +74,7 @@ async function carregar() {
   try {
     const hoje = dataLocalISO()
     const [respTecnicos, respRegistros, respOrdens] = await Promise.all([
-      client.get('/usuarios/', { params: { papel: 'TECNICO' } }),
+      client.get('/usuarios/', { params: { papel: 'TECNICO,ENCARREGADO' } }),
       client.get('/registros-ponto/', { params: { data_inicio: hoje, data_fim: hoje, equipe: 1 } }),
       client.get('/ordens-servico/'),
     ])
@@ -113,7 +113,7 @@ onMounted(() => {
         <div style="color: var(--text-muted); font-size: 14px">Toque para revisar</div>
       </div>
 
-      <h2>Técnicos hoje</h2>
+      <h2>Equipe hoje</h2>
       <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px">
         <li v-for="t in tecnicos" :key="t.id" class="card" style="display: flex; justify-content: space-between; align-items: center">
           <div>
@@ -127,7 +127,7 @@ onMounted(() => {
             </div>
           </div>
         </li>
-        <li v-if="tecnicos.length === 0" class="card">Nenhum técnico cadastrado.</li>
+        <li v-if="tecnicos.length === 0" class="card">Ninguém cadastrado.</li>
       </ul>
 
       <h2>Ordens de serviço em aberto ({{ ordensAbertas.length }})</h2>

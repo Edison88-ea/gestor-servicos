@@ -9,7 +9,10 @@ class UsuarioAdmin(UserAdmin):
     list_display = ("username", "first_name", "last_name", "papel", "is_active")
     list_filter = ("papel", "is_active")
     fieldsets = UserAdmin.fieldsets + (
-        ("Dados profissionais", {"fields": ("papel", "telefone", "cargo", "ativo_desde")}),
+        (
+            "Dados profissionais",
+            {"fields": ("papel", "encarregado_responsavel", "telefone", "cargo", "ativo_desde")},
+        ),
         (
             "Jornada de trabalho (segunda a sexta)",
             {

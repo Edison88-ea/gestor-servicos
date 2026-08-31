@@ -39,6 +39,11 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
         params = self.request.query_params
         if user.papel == user.Papel.TECNICO:
             qs = qs.filter(tecnico=user)
+        elif user.papel == user.Papel.ENCARREGADO:
+            # O encarregado vê as próprias OS e as dos funcionários que
+            # respondem a ele (o campo Usuario.encarregado_responsavel).
+            ids_equipe = list(user.equipe.values_list("id", flat=True))
+            qs = qs.filter(tecnico_id__in=[user.id, *ids_equipe])
 
         status_param = params.get("status")
         if status_param:
@@ -56,10 +61,10 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        # Um técnico abrindo sua própria OS em campo já entra atribuída a ele;
-        # gestor/RH podem informar o técnico explicitamente ao criar.
+        # Um funcionário de campo (técnico/encarregado) abrindo sua própria OS
+        # já entra atribuída a ele; gestor/RH podem informar o técnico ao criar.
         tecnico = serializer.validated_data.get("tecnico")
-        if not tecnico and user.papel == user.Papel.TECNICO:
+        if not tecnico and not user.e_gestao:
             tecnico = user
         os_criada = serializer.save(criado_por=user, tecnico=tecnico)
         if os_criada.tecnico_id:

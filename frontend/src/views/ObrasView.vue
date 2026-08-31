@@ -10,7 +10,7 @@ const router = useRouter()
 
 const filtro = ref('')
 
-const podeGerenciar = computed(() => ['GESTOR', 'ADMIN'].includes(auth.user?.papel))
+const podeGerenciar = computed(() => ['ENCARREGADO', 'GESTOR', 'ADMIN'].includes(auth.user?.papel))
 
 const STATUS_ROTULO = {
   PLANEJADO: 'Planejado',
