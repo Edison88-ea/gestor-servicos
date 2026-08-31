@@ -3,10 +3,11 @@ from datetime import datetime
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
+from rest_framework.test import APIClient
 
 from apps.accounts.models import Usuario
 
-from .models import RegistroPonto
+from .models import RegistroPonto, SolicitacaoPonto
 from .views import _agrupar_jornadas, _calcular_dias, validar_sequencia_ponto
 
 _T = RegistroPonto.Tipo
@@ -88,3 +89,35 @@ class JornadaCalculoTests(TestCase):
         self.assertEqual(len(jornadas), 2)
         self.assertTrue(jornadas[0]["abandonada"])
         self.assertEqual(_calcular_dias(self.func, "2026-08-24", "2026-08-24", None)[0]["total_minutos"], 0)
+
+
+class EncarregadoPontoTests(TestCase):
+    def setUp(self):
+        self.encarregado = Usuario.objects.create_user(
+            username="enc", password="x", papel=Usuario.Papel.ENCARREGADO
+        )
+        self.auxiliar = Usuario.objects.create_user(
+            username="aux", password="x", papel=Usuario.Papel.TECNICO,
+            encarregado_responsavel=self.encarregado,
+        )
+        self.api = APIClient()
+
+    def test_encarregado_nao_aprova_solicitacao_de_ponto(self):
+        sol = SolicitacaoPonto.objects.create(
+            funcionario=self.auxiliar,
+            tipo=SolicitacaoPonto.Tipo.JUSTIFICATIVA_AUSENCIA,
+            data_referencia="2026-08-20",
+            descricao="atestado",
+        )
+        self.api.force_authenticate(self.encarregado)
+        resp = self.api.post(f"/api/solicitacoes-ponto/{sol.id}/aprovar/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_encarregado_so_ve_o_proprio_ponto(self):
+        RegistroPonto.objects.create(
+            funcionario=self.auxiliar, tipo=RegistroPonto.Tipo.ENTRADA,
+            registrado_em=timezone.now(),
+        )
+        self.api.force_authenticate(self.encarregado)
+        resp = self.api.get("/api/registros-ponto/")
+        self.assertEqual(resp.data["count"], 0)

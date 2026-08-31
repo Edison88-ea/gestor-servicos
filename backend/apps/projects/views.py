@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from .catalogos import AREAS_AFETADAS
 from .models import Etapa, HistoricoEtapa, Projeto
-from .permissions import GestorOuAdminEscreve
+from .permissions import PodeGerenciarObra
 from .serializers import (
     AssinaturaProjetoSerializer,
     EtapaSerializer,
@@ -18,7 +18,7 @@ from .serializers import (
 
 
 class ProjetoViewSet(viewsets.ModelViewSet):
-    permission_classes = [GestorOuAdminEscreve]
+    permission_classes = [PodeGerenciarObra]
     filter_backends = [filters.SearchFilter]
     search_fields = ["numero", "nome", "responsavel"]
 
@@ -83,7 +83,7 @@ class EtapaViewSet(viewsets.ModelViewSet):
         # etapa = "definir metas") é só GESTOR/ADMIN.
         if self.action in ("progresso", "fotos"):
             return [permissions.IsAuthenticated()]
-        return [GestorOuAdminEscreve()]
+        return [PodeGerenciarObra()]
 
     def get_queryset(self):
         qs = Etapa.objects.select_related("projeto").prefetch_related("fotos", "historico")

@@ -220,8 +220,8 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
         qs = RegistroPonto.objects.select_related("funcionario")
         user = self.request.user
         params = self.request.query_params
-        if user.papel == user.Papel.TECNICO:
-            # técnico sempre vê só os próprios
+        if not user.e_gestao:
+            # técnico/encarregado sempre veem só os próprios registros de ponto
             qs = qs.filter(funcionario=user)
         elif params.get("funcionario"):
             # gestor/RH pedindo os de um funcionário específico
@@ -252,7 +252,7 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
     def _funcionario_e_periodo(self, request):
         user = request.user
         funcionario_id = request.query_params.get("funcionario")
-        if user.papel == user.Papel.TECNICO or not funcionario_id:
+        if not user.e_gestao or not funcionario_id:
             funcionario_id = user.id
 
         hoje = timezone.localdate()
@@ -340,7 +340,7 @@ class SolicitacaoPontoViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = SolicitacaoPonto.objects.select_related("funcionario", "analisado_por")
         user = self.request.user
-        if user.papel == user.Papel.TECNICO:
+        if not user.e_gestao:
             qs = qs.filter(funcionario=user)
         else:
             funcionario_id = self.request.query_params.get("funcionario")
@@ -375,7 +375,7 @@ class SolicitacaoPontoViewSet(viewsets.ModelViewSet):
             )
 
     def _checar_permissao_analise(self, request):
-        if request.user.papel == request.user.Papel.TECNICO:
+        if not request.user.e_gestao:
             return Response(
                 {"detail": "Apenas gestor/RH podem analisar solicitações."},
                 status=http_status.HTTP_403_FORBIDDEN,

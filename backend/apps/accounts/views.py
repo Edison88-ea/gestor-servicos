@@ -17,7 +17,9 @@ class UsuarioViewSet(viewsets.ReadOnlyModelViewSet):
         qs = super().get_queryset()
         papel = self.request.query_params.get("papel")
         if papel:
-            qs = qs.filter(papel=papel.upper())
+            # aceita lista separada por vírgula (ex.: "TECNICO,ENCARREGADO")
+            papeis = [p.strip().upper() for p in papel.split(",") if p.strip()]
+            qs = qs.filter(papel__in=papeis)
         return qs
 
     @action(detail=False, methods=["get"])

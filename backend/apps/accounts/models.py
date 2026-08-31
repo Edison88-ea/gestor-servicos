@@ -7,6 +7,7 @@ from django.db import models
 class Usuario(AbstractUser):
     class Papel(models.TextChoices):
         TECNICO = "TECNICO", "Técnico"
+        ENCARREGADO = "ENCARREGADO", "Encarregado"
         GESTOR = "GESTOR", "Gestor"
         RH = "RH", "RH"
         ADMIN = "ADMIN", "Administrador"
@@ -18,6 +19,17 @@ class Usuario(AbstractUser):
     cargo = models.CharField(max_length=100, blank=True)
     ativo_desde = models.DateField(null=True, blank=True)
 
+    # Encarregado a quem este funcionário se reporta. Serve para o encarregado
+    # enxergar as OS da equipe dele na própria lista (ver service_orders).
+    encarregado_responsavel = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="equipe",
+        limit_choices_to={"papel": Papel.ENCARREGADO},
+    )
+
     # Jornada de trabalho (definida pelo RH, não pelo próprio funcionário):
     # até dois períodos por dia útil (segunda a sexta), ex. manhã e tarde.
     # Deixar um período em branco significa que ele não existe para essa jornada.
@@ -28,6 +40,13 @@ class Usuario(AbstractUser):
 
     def __str__(self):
         return self.get_full_name() or self.username
+
+    @property
+    def e_gestao(self):
+        """Gestor, RH ou Admin: vê dados de todos e aprova solicitações.
+        Técnico e Encarregado são funcionários de campo (veem os próprios
+        dados de ponto; o encarregado só tem a mais a visão das OS da equipe)."""
+        return self.papel in (self.Papel.GESTOR, self.Papel.RH, self.Papel.ADMIN)
 
     @property
     def carga_horaria_diaria_minutos(self):
