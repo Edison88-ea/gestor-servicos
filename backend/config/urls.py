@@ -15,6 +15,7 @@ urlpatterns = [
     path("api/", include("apps.service_orders.urls")),
     path("api/", include("apps.timeclock.urls")),
     path("api/", include("apps.notifications.urls")),
+    path("api/", include("apps.projects.urls")),
 ]
 
 # Mídia (fotos/assinaturas) servida pela API a partir do storage padrão — disco

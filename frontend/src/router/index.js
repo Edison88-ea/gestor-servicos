@@ -17,6 +17,11 @@ import NovaOrdemServicoView from '../views/NovaOrdemServicoView.vue'
 import OrdemServicoDetalheView from '../views/OrdemServicoDetalheView.vue'
 import ComprovanteOsView from '../views/ComprovanteOsView.vue'
 import ClientesView from '../views/ClientesView.vue'
+import ObrasView from '../views/ObrasView.vue'
+import NovaObraView from '../views/NovaObraView.vue'
+import ObraDetalheView from '../views/ObraDetalheView.vue'
+import ObraEtapasView from '../views/ObraEtapasView.vue'
+import RelatorioObraView from '../views/RelatorioObraView.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView },
@@ -45,6 +50,29 @@ const routes = [
     path: '/ordens-servico/:id',
     name: 'ordem-servico-detalhe',
     component: OrdemServicoDetalheView,
+    meta: { auth: true },
+    props: true,
+  },
+  { path: '/obras', name: 'obras', component: ObrasView, meta: { auth: true } },
+  { path: '/obras/nova', name: 'nova-obra', component: NovaObraView, meta: { auth: true, gestor: true } },
+  {
+    path: '/obras/:id/etapas',
+    name: 'obra-etapas',
+    component: ObraEtapasView,
+    meta: { auth: true, gestor: true },
+    props: true,
+  },
+  {
+    path: '/obras/:id/relatorio',
+    name: 'obra-relatorio',
+    component: RelatorioObraView,
+    meta: { auth: true },
+    props: true,
+  },
+  {
+    path: '/obras/:id',
+    name: 'obra-detalhe',
+    component: ObraDetalheView,
     meta: { auth: true },
     props: true,
   },

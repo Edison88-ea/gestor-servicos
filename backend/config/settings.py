@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     "apps.service_orders",
     "apps.timeclock",
     "apps.notifications",
+    "apps.projects",
 ]
 
 MIDDLEWARE = [
