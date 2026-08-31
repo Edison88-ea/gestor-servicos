@@ -64,6 +64,7 @@ function sair() {
         <button type="button" class="item-menu" @click="irPara('/ponto/espelho')">Cartão Ponto</button>
         <button type="button" class="item-menu" @click="irPara('/ponto/solicitacoes')">Solicitações</button>
         <button type="button" class="item-menu" @click="irPara('/ordens-servico')">Ordens de Serviço</button>
+        <button type="button" class="item-menu" @click="irPara('/obras')">Obras</button>
         <button type="button" class="item-menu" @click="irPara('/clientes')">Clientes</button>
       </nav>
 
