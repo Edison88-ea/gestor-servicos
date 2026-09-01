@@ -89,14 +89,14 @@ async function bater(tipo) {
 }
 
 onMounted(async () => {
-  if (navigator.onLine) {
-    try {
-      await ponto.carregarRegistrosHoje()
-      registrosCarregados.value = true
-    } catch {
-      // fica sem trava de sequência; o backend valida no envio
-    }
+  // Tenta sempre; sem sinal, carregarRegistrosHoje() mantém o cache persistido
+  // do store, então a lista e a "próxima batida" continuam funcionando.
+  try {
+    await ponto.carregarRegistrosHoje()
+  } catch {
+    // ignora: o backend revalida a sequência no envio
   }
+  registrosCarregados.value = true
 })
 </script>
 
@@ -155,18 +155,17 @@ onMounted(async () => {
     <h2>Registros de hoje</h2>
     <div v-if="ponto.registrosHoje.length === 0" class="card">Nenhum registro ainda.</div>
     <ul v-else style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
-      <li v-for="r in ponto.registrosHoje" :key="r.id" class="card">
+      <li v-for="r in ponto.registrosHoje" :key="r.id ?? r.registrado_em" class="card">
         <div style="display: flex; justify-content: space-between">
-          <span>{{ tipos.find((t) => t.valor === r.tipo)?.rotulo }}</span>
+          <span>
+            {{ tipos.find((t) => t.valor === r.tipo)?.rotulo }}
+            <span v-if="r._pendente" style="color: var(--warning); font-size: 12px"> · aguardando envio</span>
+          </span>
           <span>{{ new Date(r.registrado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }}</span>
         </div>
         <div v-if="r.endereco" style="color: var(--text-muted); font-size: 13px; margin-top: 4px">📍 {{ r.endereco }}</div>
       </li>
     </ul>
-
-    <p v-if="ponto.filaOffline.length" style="color: var(--warning)">
-      {{ ponto.filaOffline.length }} registro(s) aguardando sincronização.
-    </p>
 
     <div
       v-if="ponto.rejeitados.length"

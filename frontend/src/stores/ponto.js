@@ -11,6 +11,7 @@ function ontemISO() {
 
 const QUEUE_KEY = 'ponto_fila_offline'
 const REJEITADOS_KEY = 'ponto_rejeitados'
+const RECENTES_KEY = 'ponto_recentes'
 
 function carregar(chave) {
   try {
@@ -37,9 +38,10 @@ function deveManterNaFila(error) {
 
 export const usePontoStore = defineStore('ponto', {
   state: () => ({
-    // Últimos ~2 dias de batidas. Precisa de ontem+hoje para saber se há uma
-    // jornada que virou a noite (Entrada ontem à noite, ainda sem Saída).
-    registrosRecentes: [],
+    // Últimos ~2 dias de batidas, em cache (persiste): precisa de ontem+hoje
+    // para saber se há jornada que virou a noite, e o técnico precisa ver o
+    // que já bateu mesmo sem sinal.
+    registrosRecentes: carregar(RECENTES_KEY),
     filaOffline: carregar(QUEUE_KEY),
     // Batidas que o servidor recusou (4xx — sequência inválida, etc.). Ficam
     // visíveis para o funcionário em vez de sumir caladas; ele pode abrir uma
@@ -48,20 +50,31 @@ export const usePontoStore = defineStore('ponto', {
     sincronizando: false,
   }),
   getters: {
-    // Só as batidas de hoje — para a lista "Registros de hoje".
+    // Batidas de hoje para a lista "Registros de hoje" — inclui as que ainda
+    // estão na fila offline (marcadas _pendente), senão o técnico bate o ponto
+    // sem sinal e não vê nada aparecer.
     registrosHoje(state) {
       const hoje = dataLocalISO()
-      return state.registrosRecentes.filter(
-        (r) => (r.registrado_em || '').slice(0, 10) === hoje,
+      const doHoje = (r) => (r.registrado_em || '').slice(0, 10) === hoje
+      const servidor = state.registrosRecentes.filter(doHoje)
+      const fila = state.filaOffline.filter(doHoje).map((r) => ({ ...r, _pendente: true }))
+      return [...servidor, ...fila].sort(
+        (a, b) => new Date(a.registrado_em) - new Date(b.registrado_em),
       )
     },
   },
   actions: {
     async carregarRegistrosHoje() {
-      const { data } = await client.get('/registros-ponto/', {
-        params: { data_inicio: ontemISO(), data_fim: dataLocalISO() },
-      })
-      this.registrosRecentes = data.results ?? data
+      try {
+        const { data } = await client.get('/registros-ponto/', {
+          params: { data_inicio: ontemISO(), data_fim: dataLocalISO() },
+        })
+        this.registrosRecentes = data.results ?? data
+        salvar(RECENTES_KEY, this.registrosRecentes)
+      } catch (error) {
+        if (error.response) throw error
+        // sem sinal: mantém o cache que já está no state
+      }
     },
 
     _enfileirar(registro) {

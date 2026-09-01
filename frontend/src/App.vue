@@ -5,6 +5,7 @@ import { usePontoStore } from './stores/ponto'
 import { useNotificacoesStore } from './stores/notificacoes'
 import { useOsOfflineStore } from './stores/osOffline'
 import { useClientesStore } from './stores/clientes'
+import { useOrdensServicoStore } from './stores/ordensServico'
 import MenuLateral from './components/MenuLateral.vue'
 import PainelNotificacoes from './components/PainelNotificacoes.vue'
 import PwaAtualizacao from './components/PwaAtualizacao.vue'
@@ -15,6 +16,7 @@ const ponto = usePontoStore()
 const notificacoes = useNotificacoesStore()
 const osOffline = useOsOfflineStore()
 const clientes = useClientesStore()
+const ordens = useOrdensServicoStore()
 const online = ref(navigator.onLine)
 const menuAberto = ref(false)
 const notificacoesAbertas = ref(false)
@@ -66,9 +68,15 @@ watch(
   () => auth.isAuthenticated,
   (autenticado) => {
     if (autenticado) {
-      if (navigator.onLine) auth.atualizarPerfil()
       sincronizarTudo()
-      if (navigator.onLine) clientes.carregarTodosParaCache()
+      if (navigator.onLine) {
+        auth.atualizarPerfil()
+        // Aquece o cache para trabalhar offline depois: perfil, clientes,
+        // ponto recente e a lista de OS.
+        clientes.carregarTodosParaCache()
+        ponto.carregarRegistrosHoje().catch(() => {})
+        ordens.carregar().catch(() => {})
+      }
       iniciarPollNotificacoes()
     } else {
       pararPollNotificacoes()

@@ -217,9 +217,18 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
     },
 
     _otimista(id, mudancas) {
-      const os = this.ordens.find((o) => o.id === id)
-      if (os) Object.assign(os, mudancas)
-      return os || { id, ...mudancas }
+      // Aplica a mudança na lista em memória E no cache, e devolve a OS
+      // completa (não um stub) — offline a tela de detalhe lê do cache e
+      // precisa de cliente_nome, fotos, pausas, etc.
+      const naLista = this.ordens.find((o) => o.id === id)
+      if (naLista) Object.assign(naLista, mudancas)
+
+      const cache = lerCache()
+      const base = cache[id] || naLista || { id }
+      const atualizado = { ...base, ...mudancas }
+      cache[id] = atualizado
+      localStorage.setItem(KEY_CACHE, JSON.stringify(cache))
+      return atualizado
     },
 
     _atualizarNaLista(ordemAtualizada) {

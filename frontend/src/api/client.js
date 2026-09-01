@@ -46,9 +46,16 @@ client.interceptors.response.use(
         pendingRequests = []
         return client(config)
       } catch (refreshError) {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
-        window.location.href = '/login'
+        // Só desloga se o servidor REJEITOU o refresh (token inválido/expirado).
+        // Falha de rede (sem `response`) não pode deslogar — deixaria o técnico
+        // preso fora do app, em campo, sem sinal. Nesse caso só rejeita e deixa
+        // cada tela cair no cache offline.
+        if (refreshError.response) {
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+          localStorage.removeItem('user')
+          window.location.href = '/login'
+        }
         return Promise.reject(refreshError)
       } finally {
         isRefreshing = false
