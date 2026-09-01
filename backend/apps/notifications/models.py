@@ -5,6 +5,7 @@ from django.db import models
 class Notificacao(models.Model):
     class Tipo(models.TextChoices):
         OS_ATRIBUIDA = "OS_ATRIBUIDA", "Ordem de serviço atribuída"
+        OS_CONCLUIDA = "OS_CONCLUIDA", "Ordem de serviço concluída"
         SOLICITACAO_APROVADA = "SOLICITACAO_APROVADA", "Solicitação aprovada"
         SOLICITACAO_REJEITADA = "SOLICITACAO_REJEITADA", "Solicitação rejeitada"
         NOVA_SOLICITACAO = "NOVA_SOLICITACAO", "Nova solicitação para revisar"

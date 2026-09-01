@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from apps.accounts.models import Usuario
 from apps.notifications.models import Notificacao
 from apps.notifications.utils import notificar
 
@@ -151,7 +152,30 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
         if "assinatura_cliente" in request.FILES:
             ordem.assinatura_cliente = request.FILES["assinatura_cliente"]
         ordem.save()
+
+        self._avisar_conclusao(ordem, request.user)
         return Response(self.get_serializer(ordem).data)
+
+    def _avisar_conclusao(self, ordem, autor):
+        """Avisa o encarregado do técnico e a gestão de que a OS foi concluída.
+        Não avisa quem fez a conclusão."""
+        tecnico = ordem.tecnico
+        nome_tecnico = (tecnico.get_full_name() or tecnico.username) if tecnico else "Alguém"
+        mensagem = f"{nome_tecnico} concluiu a OS {ordem.numero} — {ordem.cliente.nome}."
+        link = f"/ordens-servico/{ordem.id}"
+
+        destinatarios = set(
+            Usuario.objects.filter(
+                papel__in=[Usuario.Papel.GESTOR, Usuario.Papel.RH, Usuario.Papel.ADMIN],
+                is_active=True,
+            )
+        )
+        if tecnico and tecnico.encarregado_responsavel_id:
+            destinatarios.add(tecnico.encarregado_responsavel)
+        destinatarios.discard(autor)
+
+        for destinatario in destinatarios:
+            notificar(destinatario, Notificacao.Tipo.OS_CONCLUIDA, mensagem, link=link)
 
     @action(detail=False, methods=["get"], url_path="relatos-anteriores")
     def relatos_anteriores(self, request):

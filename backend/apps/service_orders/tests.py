@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Usuario
 from apps.clients.models import Cliente
+from apps.notifications.models import Notificacao
 
 from .models import OrdemServico
 
@@ -103,3 +104,20 @@ class EncarregadoTests(TestCase):
         self.api.force_authenticate(self.encarregado)
         resp = self.api.post("/api/projetos/", {"nome": "Obra do encarregado"}, format="json")
         self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_conclusao_notifica_encarregado_e_gestor_menos_o_autor(self):
+        gestor = Usuario.objects.create_user(
+            username="g", password="x", papel=Usuario.Papel.GESTOR
+        )
+        os = self._os(self.auxiliar)
+        self.api.force_authenticate(self.auxiliar)
+        resp = self.api.post(f"/api/ordens-servico/{os.id}/concluir/", {}, format="json")
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+        avisados = set(
+            Notificacao.objects.filter(tipo=Notificacao.Tipo.OS_CONCLUIDA).values_list(
+                "destinatario_id", flat=True
+            )
+        )
+        self.assertEqual(avisados, {self.encarregado.id, gestor.id})
+        self.assertNotIn(self.auxiliar.id, avisados)
