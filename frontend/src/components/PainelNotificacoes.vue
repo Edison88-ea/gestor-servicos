@@ -1,13 +1,23 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificacoesStore } from '../stores/notificacoes'
 
-defineProps({ aberto: { type: Boolean, default: false } })
+const props = defineProps({ aberto: { type: Boolean, default: false } })
 const emit = defineEmits(['fechar'])
 
 const store = useNotificacoesStore()
 const router = useRouter()
+
+// O painel é montado uma vez (fica escondido). Recarrega a lista toda vez que
+// abre, senão mostra o estado de quando o app subiu — e uma notificação que
+// chegou depois acende o sino mas não aparece aqui.
+watch(
+  () => props.aberto,
+  (aberto) => {
+    if (aberto) store.carregar().catch(() => {})
+  },
+)
 
 function formatarData(iso) {
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
