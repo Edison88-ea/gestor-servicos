@@ -3,11 +3,13 @@ from django.contrib import admin
 from django.urls import include, path, re_path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from config.painel import painel
 from config.spa import healthz, serve_media, spa_index
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("healthz/", healthz),
+    path("api/painel/", painel, name="painel"),
     path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/", include("apps.accounts.urls")),

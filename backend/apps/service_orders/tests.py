@@ -105,6 +105,18 @@ class EncarregadoTests(TestCase):
         resp = self.api.post("/api/projetos/", {"nome": "Obra do encarregado"}, format="json")
         self.assertEqual(resp.status_code, 201, resp.data)
 
+    def test_painel_so_para_gestao(self):
+        self.api.force_authenticate(self.auxiliar)
+        self.assertEqual(self.api.get("/api/painel/").status_code, 403)
+
+        gestor = Usuario.objects.create_user(username="pg", password="x", papel=Usuario.Papel.GESTOR)
+        self._os(self.auxiliar)
+        self.api.force_authenticate(gestor)
+        resp = self.api.get("/api/painel/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("os_abertas", resp.data["kpis"])
+        self.assertGreaterEqual(resp.data["kpis"]["os_abertas"], 1)
+
     def test_conclusao_notifica_encarregado_e_gestor_menos_o_autor(self):
         gestor = Usuario.objects.create_user(
             username="g", password="x", papel=Usuario.Papel.GESTOR

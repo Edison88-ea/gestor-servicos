@@ -43,6 +43,49 @@ body {
   background: var(--bg);
 }
 
+/* O painel do gestor é usado no computador do escritório: quando a tela é
+   larga, ele quebra o limite mobile e usa a largura toda. */
+@media (min-width: 900px) {
+  #app:has(.painel-wide) {
+    max-width: 1160px;
+  }
+  .painel-wide .painel-kpis {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  .painel-wide .painel-colunas {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+}
+
+.painel-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.kpi-valor {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.kpi-rotulo {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+.kpi-alerta .kpi-valor {
+  color: var(--danger);
+}
+
 /* Cabeçalho global do app (☰ / 3D Sistemas / 🔔). O padding-top respeita a
    área segura do iOS para o botão do menu não ficar embaixo do relógio /
    notch quando o app roda instalado (standalone). */

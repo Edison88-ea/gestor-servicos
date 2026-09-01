@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '../api/client'
 import { useSolicitacoesPontoStore } from '../stores/solicitacoesPonto'
-import { dataLocalISO } from '../utils/tempo'
+import { dataLocalISO, formatarMinutos } from '../utils/tempo'
 
 const router = useRouter()
 const solicitacoesStore = useSolicitacoesPontoStore()
@@ -12,6 +12,21 @@ const carregando = ref(true)
 const tecnicos = ref([])
 const registrosHoje = ref([])
 const ordensAbertas = ref([])
+const kpis = ref(null)
+
+const tilesKpi = computed(() => {
+  const k = kpis.value
+  if (!k) return []
+  return [
+    { valor: k.os_abertas, rotulo: 'OS em aberto' },
+    { valor: k.os_concluidas_semana, rotulo: 'OS concluídas na semana' },
+    { valor: k.os_concluidas_mes, rotulo: 'OS concluídas no mês' },
+    { valor: k.solicitacoes_pendentes, rotulo: 'Solicitações pendentes', alerta: k.solicitacoes_pendentes > 0 },
+    { valor: formatarMinutos(k.horas_extras_mes_min), rotulo: 'Horas extras no mês' },
+    { valor: formatarMinutos(k.horas_faltantes_mes_min), rotulo: 'Horas faltantes no mês', alerta: k.horas_faltantes_mes_min > 0 },
+    { valor: k.obras_ativas, rotulo: 'Obras ativas' },
+  ]
+})
 
 // Seção de comprovantes (exportação de OS concluídas), com filtro no servidor.
 const hojeData = new Date()
@@ -83,6 +98,7 @@ async function carregar() {
     const ordens = respOrdens.data.results ?? respOrdens.data
     ordensAbertas.value = ordens.filter((o) => ['ATRIBUIDA', 'EM_ANDAMENTO'].includes(o.status))
     await solicitacoesStore.carregar('PENDENTE')
+    client.get('/painel/').then((r) => { kpis.value = r.data.kpis }).catch(() => {})
   } finally {
     carregando.value = false
   }
@@ -99,10 +115,17 @@ onMounted(() => {
     <strong>Painel</strong>
   </div>
 
-  <div class="content">
+  <div class="content painel-wide">
     <p v-if="carregando">Carregando...</p>
 
     <template v-else>
+      <div v-if="tilesKpi.length" class="painel-kpis">
+        <div v-for="t in tilesKpi" :key="t.rotulo" class="kpi" :class="{ 'kpi-alerta': t.alerta }">
+          <div class="kpi-valor">{{ t.valor }}</div>
+          <div class="kpi-rotulo">{{ t.rotulo }}</div>
+        </div>
+      </div>
+
       <div
         v-if="solicitacoesStore.itens.length > 0"
         class="card"
