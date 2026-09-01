@@ -86,6 +86,44 @@ body {
   color: var(--danger);
 }
 
+.barra-progresso {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+  margin-top: 6px;
+}
+.barra-progresso > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+.barra-progresso.atrasada > span {
+  background: var(--danger);
+}
+
+.tabela-simples {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.tabela-simples th,
+.tabela-simples td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.tabela-simples th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 13px;
+}
+.tabela-simples td.num,
+.tabela-simples th.num {
+  text-align: right;
+}
+
 /* Cabeçalho global do app (☰ / 3D Sistemas / 🔔). O padding-top respeita a
    área segura do iOS para o botão do menu não ficar embaixo do relógio /
    notch quando o app roda instalado (standalone). */

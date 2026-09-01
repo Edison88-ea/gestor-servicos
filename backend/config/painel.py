@@ -9,9 +9,10 @@ Escopo:
   solicitações de ponto (não aprova).
 """
 
+from collections import defaultdict
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -180,6 +181,7 @@ def painel(request):
     limite_atribuida = agora - timedelta(days=2)
     limite_andamento = agora - timedelta(days=3)
     paradas = []
+    paradas_por_tec = defaultdict(int)
     for o in os_qs.filter(status__in=_OS_ABERTAS).exclude(tecnico__isnull=True).order_by("criado_em"):
         if o.status == OrdemServico.Status.ATRIBUIDA and o.data_inicio is None and o.criado_em < limite_atribuida:
             motivo = "sem iniciar"
@@ -189,6 +191,7 @@ def painel(request):
             base = o.atualizado_em
         else:
             continue
+        paradas_por_tec[o.tecnico_id] += 1
         paradas.append(
             {
                 "id": o.id,
@@ -215,6 +218,54 @@ def painel(request):
         ).order_by("-criado_em")
     ]
 
+    # --- Produtividade por técnico ---
+    concl_mes = dict(
+        os_qs.filter(status=OrdemServico.Status.CONCLUIDA, data_conclusao__date__gte=inicio_mes, tecnico_id__in=ids)
+        .values("tecnico_id")
+        .annotate(n=Count("id"))
+        .values_list("tecnico_id", "n")
+    )
+    abertas_tec = dict(
+        os_qs.filter(status__in=_OS_ABERTAS, tecnico_id__in=ids)
+        .values("tecnico_id")
+        .annotate(n=Count("id"))
+        .values_list("tecnico_id", "n")
+    )
+    produtividade = [
+        {
+            "id": f.id,
+            "nome": f.get_full_name() or f.username,
+            "os_em_aberto": abertas_tec.get(f.id, 0),
+            "os_concluidas_mes": concl_mes.get(f.id, 0),
+            "os_paradas": paradas_por_tec.get(f.id, 0),
+        }
+        for f in funcionarios
+    ]
+
+    # --- Obras ativas ---
+    obras = []
+    for p in (
+        Projeto.objects.filter(status__in=_OBRAS_ATIVAS)
+        .annotate(_meta=Sum("etapas__meta"), _real=Sum("etapas__realizado"), _n=Count("etapas", distinct=True))
+        .order_by("data_termino_previsto", "numero")
+    ):
+        meta = p._meta or 0
+        real = p._real or 0
+        obras.append(
+            {
+                "id": p.id,
+                "numero": p.numero,
+                "nome": p.nome,
+                "status": p.status,
+                "progresso": int(min(real / meta * 100, 100)) if meta else 0,
+                "realizado": real,
+                "meta": meta,
+                "etapas": p._n,
+                "termino_previsto": p.data_termino_previsto.isoformat() if p.data_termino_previsto else None,
+                "atrasada": bool(p.data_termino_previsto and p.data_termino_previsto < hoje),
+            }
+        )
+
     return Response(
         {
             "kpis": kpis,
@@ -225,6 +276,8 @@ def painel(request):
                 "os_paradas": paradas,
             },
             "os_abertas": os_abertas_lista,
+            "produtividade": produtividade,
+            "obras": obras,
             "e_gestao": user.e_gestao,
             "gerado_em": agora,
         }

@@ -17,6 +17,8 @@ const equipe = computed(() => painel.value?.equipe ?? [])
 const pendencias = computed(
   () => painel.value?.pendencias ?? { solicitacoes: [], os_sem_tecnico: [], os_paradas: [] },
 )
+const produtividade = computed(() => painel.value?.produtividade ?? [])
+const obras = computed(() => painel.value?.obras ?? [])
 const eGestao = computed(() => !!painel.value?.e_gestao)
 
 const tilesKpi = computed(() => {
@@ -83,6 +85,25 @@ async function carregarConcluidas() {
   }
 }
 watch([filtroMes, filtroTecnico], carregarConcluidas)
+
+const exportando = ref(false)
+async function exportarCsv() {
+  exportando.value = true
+  try {
+    const { data } = await client.get('/ordens-servico/exportar/', {
+      params: { concluida_mes: filtroMes.value, tecnico: filtroTecnico.value || undefined },
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `os-${filtroMes.value}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  } finally {
+    exportando.value = false
+  }
+}
 
 onMounted(() => {
   carregar()
@@ -191,13 +212,64 @@ onMounted(() => {
         <li v-if="painel.os_abertas.length === 0" class="card">Nenhuma OS em aberto.</li>
       </ul>
 
+      <div class="painel-colunas" style="margin-top: 20px">
+        <section>
+          <h2>Produtividade no mês</h2>
+          <div class="card" style="overflow-x: auto">
+            <table class="tabela-simples">
+              <thead>
+                <tr>
+                  <th>Técnico</th>
+                  <th class="num">Em aberto</th>
+                  <th class="num">Concluídas</th>
+                  <th class="num">Paradas</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="p in produtividade" :key="p.id">
+                  <td>{{ p.nome }}</td>
+                  <td class="num">{{ p.os_em_aberto }}</td>
+                  <td class="num">{{ p.os_concluidas_mes }}</td>
+                  <td class="num" :style="{ color: p.os_paradas ? 'var(--danger)' : 'inherit' }">{{ p.os_paradas }}</td>
+                </tr>
+                <tr v-if="produtividade.length === 0"><td colspan="4" style="color: var(--text-muted)">Sem dados.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section>
+          <h2>Obras ativas</h2>
+          <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
+            <li v-for="o in obras" :key="o.id" class="card" style="cursor: pointer" @click="router.push(`/obras/${o.id}`)">
+              <div style="display: flex; justify-content: space-between; gap: 8px">
+                <strong>{{ o.nome }}</strong>
+                <span style="color: var(--text-muted); font-size: 13px">{{ o.progresso }}%</span>
+              </div>
+              <div class="barra-progresso" :class="{ atrasada: o.atrasada }">
+                <span :style="{ width: o.progresso + '%' }" />
+              </div>
+              <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px">
+                {{ o.realizado }}/{{ o.meta }} pontos · {{ o.etapas }} etapa(s)
+                <span v-if="o.termino_previsto">· prev. {{ new Date(o.termino_previsto).toLocaleDateString('pt-BR') }}</span>
+                <span v-if="o.atrasada" style="color: var(--danger)"> · atrasada</span>
+              </div>
+            </li>
+            <li v-if="obras.length === 0" class="card">Nenhuma obra ativa.</li>
+          </ul>
+        </section>
+      </div>
+
       <h2 style="margin-top: 20px">Comprovantes de OS</h2>
-      <div class="card" style="display: flex; gap: 8px; margin-bottom: 8px">
-        <input v-model="filtroMes" type="month" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border)" />
-        <select v-model="filtroTecnico" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border)">
+      <div class="card" style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap">
+        <input v-model="filtroMes" type="month" style="flex: 1; min-width: 130px; padding: 8px; border-radius: 8px; border: 1px solid var(--border)" />
+        <select v-model="filtroTecnico" style="flex: 1; min-width: 130px; padding: 8px; border-radius: 8px; border: 1px solid var(--border)">
           <option value="">Todos os técnicos</option>
           <option v-for="m in equipe" :key="m.id" :value="String(m.id)">{{ m.nome }}</option>
         </select>
+        <button class="btn-secondary" style="white-space: nowrap; padding: 8px 12px" :disabled="exportando" @click="exportarCsv">
+          {{ exportando ? '...' : '⬇ CSV' }}
+        </button>
       </div>
       <p v-if="carregandoConcluidas" style="color: var(--text-muted)">Carregando...</p>
       <ul v-else style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">

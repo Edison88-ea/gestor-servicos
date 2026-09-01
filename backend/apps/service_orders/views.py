@@ -1,5 +1,7 @@
+import csv
 import json
 
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
@@ -176,6 +178,45 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
 
         for destinatario in destinatarios:
             notificar(destinatario, Notificacao.Tipo.OS_CONCLUIDA, mensagem, link=link)
+
+    @action(detail=False, methods=["get"], url_path="exportar")
+    def exportar(self, request):
+        """CSV das OS concluídas (respeita o escopo do usuário e o filtro
+        ?concluida_mes=AAAA-MM / ?tecnico=)."""
+        qs = (
+            self.get_queryset()
+            .filter(status=OrdemServico.Status.CONCLUIDA)
+            .order_by("data_conclusao")
+        )
+        mes = request.query_params.get("concluida_mes") or "todas"
+
+        resp = HttpResponse(content_type="text/csv; charset=utf-8")
+        resp["Content-Disposition"] = f'attachment; filename="os-{mes}.csv"'
+        resp.write("﻿")  # BOM: Excel abre os acentos certo
+        escritor = csv.writer(resp, delimiter=";")
+        escritor.writerow(
+            ["Número", "Cliente", "Técnico", "Tipo de serviço", "Prioridade",
+             "Aberta em", "Início", "Conclusão", "Relato"]
+        )
+
+        def dt(valor):
+            return timezone.localtime(valor).strftime("%d/%m/%Y %H:%M") if valor else ""
+
+        for o in qs:
+            escritor.writerow(
+                [
+                    o.numero,
+                    o.cliente.nome,
+                    (o.tecnico.get_full_name() or o.tecnico.username) if o.tecnico else "",
+                    o.tipo_servico,
+                    o.get_prioridade_display(),
+                    dt(o.criado_em),
+                    dt(o.data_inicio),
+                    dt(o.data_conclusao),
+                    (o.observacoes_tecnico or "").replace("\n", " | "),
+                ]
+            )
+        return resp
 
     @action(detail=False, methods=["get"], url_path="relatos-anteriores")
     def relatos_anteriores(self, request):
