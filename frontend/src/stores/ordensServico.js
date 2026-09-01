@@ -72,7 +72,11 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
 
     async criar(payload) {
       const offline = useOsOfflineStore()
-      if (!navigator.onLine) {
+      // Sem sinal, ou cliente ainda não sincronizado (id tmp_): cria local. A
+      // ordem de sincronização (cliente antes de OS) resolve o id depois.
+      const clienteTmp =
+        typeof payload.cliente === 'string' && payload.cliente.startsWith('tmp_')
+      if (!navigator.onLine || clienteTmp) {
         return offline.criarLocal(payload)
       }
       try {

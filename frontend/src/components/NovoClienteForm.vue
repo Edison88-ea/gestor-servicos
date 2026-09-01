@@ -1,12 +1,14 @@
 <script setup>
 import { ref } from 'vue'
-import client from '../api/client'
+import { useClientesStore } from '../stores/clientes'
 
 const props = defineProps({
-  // Quando informado, o formulário edita esse cliente (PATCH) em vez de criar.
+  // Quando informado, o formulário edita esse cliente em vez de criar.
   cliente: { type: Object, default: null },
 })
 const emit = defineEmits(['criado', 'cancelar'])
+
+const clientes = useClientesStore()
 
 const nome = ref(props.cliente?.nome ?? '')
 const documento = ref(props.cliente?.documento ?? '')
@@ -33,12 +35,14 @@ async function salvar() {
     endereco: endereco.value,
   }
   try {
-    const { data } = props.cliente
-      ? await client.patch(`/clientes/${props.cliente.id}/`, payload)
-      : await client.post('/clientes/', payload)
-    emit('criado', data)
-  } catch {
-    erro.value = 'Não foi possível salvar o cliente. Verifique a conexão e tente novamente.'
+    const salvo = props.cliente
+      ? await clientes.atualizar(props.cliente.id, payload)
+      : await clientes.criar(payload)
+    emit('criado', salvo)
+  } catch (e) {
+    erro.value = e?.offline
+      ? 'Sem conexão: para editar um cliente já cadastrado é preciso sinal. Um cliente novo pode ser criado offline.'
+      : 'Não foi possível salvar o cliente. Verifique os dados e tente de novo.'
   } finally {
     salvando.value = false
   }

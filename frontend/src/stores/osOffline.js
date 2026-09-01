@@ -70,6 +70,19 @@ export const useOsOfflineStore = defineStore('osOffline', {
       return this.locais.find((o) => o.id === id) || null
     },
 
+    // Chamado quando um cliente criado offline sincroniza e ganha id real: as
+    // OS locais que apontavam para o id temporário passam a apontar para o real.
+    trocarClienteTmp(tmpId, realId) {
+      let mudou = false
+      for (const os of this.locais) {
+        if (os.cliente === tmpId) {
+          os.cliente = realId
+          mudou = true
+        }
+      }
+      if (mudou) this._persistir()
+    },
+
     // --- criação/edição local (usadas quando offline ou a OS é tmp_) ---
 
     criarLocal(dados) {
@@ -147,6 +160,11 @@ export const useOsOfflineStore = defineStore('osOffline', {
     },
 
     async _enviarOsLocal(os) {
+      // Cliente criado offline ainda não subiu (ou falhou): adia esta OS para o
+      // próximo ciclo, quando o cliente já tiver id real.
+      if (typeof os.cliente === 'string' && os.cliente.startsWith('tmp_')) {
+        return
+      }
       // Progresso persistido: se um passo falhar, no retry a gente retoma de
       // onde parou em vez de recriar a OS no servidor.
       os.sync = os.sync || { realId: null, iniciado: false, fotosOk: [], concluido: false }

@@ -78,7 +78,11 @@ onMounted(() => store.buscar())
           @click="editar(c)"
         >
           <div style="display: flex; justify-content: space-between; gap: 8px">
-            <strong>{{ c.nome }}</strong>
+            <strong>
+              {{ c.nome }}
+              <span v-if="c._local && c.erroSync" style="color: var(--danger); font-size: 12px; font-weight: 400"> · {{ c.erroSync }}</span>
+              <span v-else-if="c._local" style="color: var(--warning); font-size: 12px; font-weight: 400"> · aguardando envio</span>
+            </strong>
             <span style="color: var(--text-muted); font-size: 13px">{{ c.documento }}</span>
           </div>
           <div v-if="linhaEndereco(c)" style="color: var(--text-muted); font-size: 14px">

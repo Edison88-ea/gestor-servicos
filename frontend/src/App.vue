@@ -22,9 +22,12 @@ const menuAberto = ref(false)
 const notificacoesAbertas = ref(false)
 let intervaloNotificacoes = null
 
-function sincronizarTudo() {
+async function sincronizarTudo() {
   if (!navigator.onLine || !auth.isAuthenticated) return
   ponto.sincronizarFila()
+  // clientes primeiro: uma OS criada offline pode apontar para um cliente
+  // criado offline, que precisa ganhar id real antes de a OS subir.
+  await clientes.sincronizar()
   osOffline.sincronizar()
 }
 
