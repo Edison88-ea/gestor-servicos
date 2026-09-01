@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import client from '../api/client'
 import { useOsOfflineStore } from './osOffline'
 import { blobStore, novaChaveBlob, paraBlobPersistente } from '../utils/idb'
+import { comprimirImagem } from '../utils/imagem'
 
 const KEY_CACHE = 'os_cache'
 
@@ -189,6 +190,7 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
 
     async adicionarFoto(id, arquivo, legenda) {
       const offline = useOsOfflineStore()
+      arquivo = await comprimirImagem(arquivo) // reduz antes de subir/guardar
       if (ehTmp(id)) return offline.adicionarFotoLocal(id, arquivo)
       try {
         const fd = new FormData()
