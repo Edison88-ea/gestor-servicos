@@ -105,8 +105,8 @@ class EncarregadoTests(TestCase):
         resp = self.api.post("/api/projetos/", {"nome": "Obra do encarregado"}, format="json")
         self.assertEqual(resp.status_code, 201, resp.data)
 
-    def test_painel_so_para_gestao(self):
-        self.api.force_authenticate(self.auxiliar)
+    def test_painel_tecnico_sem_acesso_gestor_e_encarregado_com(self):
+        self.api.force_authenticate(self.outro)  # técnico solto
         self.assertEqual(self.api.get("/api/painel/").status_code, 403)
 
         gestor = Usuario.objects.create_user(username="pg", password="x", papel=Usuario.Papel.GESTOR)
@@ -114,8 +114,18 @@ class EncarregadoTests(TestCase):
         self.api.force_authenticate(gestor)
         resp = self.api.get("/api/painel/")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("os_abertas", resp.data["kpis"])
         self.assertGreaterEqual(resp.data["kpis"]["os_abertas"], 1)
+        self.assertTrue(resp.data["e_gestao"])
+
+        # encarregado: só a equipe dele
+        self._os(self.outro)  # OS de fora
+        self.api.force_authenticate(self.encarregado)
+        resp = self.api.get("/api/painel/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data["e_gestao"])
+        nomes_equipe = {m["nome"] for m in resp.data["equipe"]}
+        self.assertIn(self.auxiliar.get_full_name() or "aux", nomes_equipe)
+        self.assertNotIn("outro", nomes_equipe)
 
     def test_conclusao_notifica_encarregado_e_gestor_menos_o_autor(self):
         gestor = Usuario.objects.create_user(

@@ -3,16 +3,21 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import client from '../api/client'
 import { useSolicitacoesPontoStore } from '../stores/solicitacoesPonto'
-import { dataLocalISO, formatarMinutos } from '../utils/tempo'
+import { formatarMinutos } from '../utils/tempo'
 
 const router = useRouter()
 const solicitacoesStore = useSolicitacoesPontoStore()
 
 const carregando = ref(true)
-const tecnicos = ref([])
-const registrosHoje = ref([])
-const ordensAbertas = ref([])
-const kpis = ref(null)
+const painel = ref(null)
+const processandoSolic = ref(null)
+
+const kpis = computed(() => painel.value?.kpis)
+const equipe = computed(() => painel.value?.equipe ?? [])
+const pendencias = computed(
+  () => painel.value?.pendencias ?? { solicitacoes: [], os_sem_tecnico: [], os_paradas: [] },
+)
+const eGestao = computed(() => !!painel.value?.e_gestao)
 
 const tilesKpi = computed(() => {
   const k = kpis.value
@@ -28,11 +33,32 @@ const tilesKpi = computed(() => {
   ]
 })
 
-// Seção de comprovantes (exportação de OS concluídas), com filtro no servidor.
+async function carregar() {
+  carregando.value = true
+  try {
+    const { data } = await client.get('/painel/')
+    painel.value = data
+  } finally {
+    carregando.value = false
+  }
+}
+
+async function decidirSolic(id, aprovar) {
+  processandoSolic.value = id
+  try {
+    if (aprovar) await solicitacoesStore.aprovar(id)
+    else await solicitacoesStore.rejeitar(id)
+    await carregar()
+  } catch {
+    // deixa o gestor tentar de novo
+  } finally {
+    processandoSolic.value = null
+  }
+}
+
+// --- Comprovantes (OS concluídas), com filtro no servidor ---
 const hojeData = new Date()
-const filtroMes = ref(
-  `${hojeData.getFullYear()}-${String(hojeData.getMonth() + 1).padStart(2, '0')}`,
-)
+const filtroMes = ref(`${hojeData.getFullYear()}-${String(hojeData.getMonth() + 1).padStart(2, '0')}`)
 const filtroTecnico = ref('')
 const ordensConcluidas = ref([])
 const carregandoConcluidas = ref(false)
@@ -56,53 +82,7 @@ async function carregarConcluidas() {
     carregandoConcluidas.value = false
   }
 }
-
 watch([filtroMes, filtroTecnico], carregarConcluidas)
-
-const ULTIMO_ROTULO = {
-  ENTRADA: 'Em andamento',
-  VOLTA_INTERVALO: 'Em andamento',
-  SAIDA_INTERVALO: 'Em intervalo',
-  SAIDA: 'Jornada concluída',
-}
-
-const statusPorTecnico = computed(() => {
-  const mapa = {}
-  for (const tecnico of tecnicos.value) {
-    const registrosDoTecnico = registrosHoje.value
-      .filter((r) => r.funcionario === tecnico.id)
-      .sort((a, b) => new Date(b.registrado_em) - new Date(a.registrado_em))
-    const ultimo = registrosDoTecnico[0]
-    mapa[tecnico.id] = ultimo
-      ? { rotulo: ULTIMO_ROTULO[ultimo.tipo] || ultimo.tipo, hora: ultimo.registrado_em }
-      : { rotulo: 'Não bateu ponto', hora: null }
-  }
-  return mapa
-})
-
-function formatarHora(iso) {
-  return iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
-}
-
-async function carregar() {
-  carregando.value = true
-  try {
-    const hoje = dataLocalISO()
-    const [respTecnicos, respRegistros, respOrdens] = await Promise.all([
-      client.get('/usuarios/', { params: { papel: 'TECNICO,ENCARREGADO' } }),
-      client.get('/registros-ponto/', { params: { data_inicio: hoje, data_fim: hoje, equipe: 1 } }),
-      client.get('/ordens-servico/'),
-    ])
-    tecnicos.value = respTecnicos.data.results ?? respTecnicos.data
-    registrosHoje.value = respRegistros.data.results ?? respRegistros.data
-    const ordens = respOrdens.data.results ?? respOrdens.data
-    ordensAbertas.value = ordens.filter((o) => ['ATRIBUIDA', 'EM_ANDAMENTO'].includes(o.status))
-    await solicitacoesStore.carregar('PENDENTE')
-    client.get('/painel/').then((r) => { kpis.value = r.data.kpis }).catch(() => {})
-  } finally {
-    carregando.value = false
-  }
-}
 
 onMounted(() => {
   carregar()
@@ -118,7 +98,7 @@ onMounted(() => {
   <div class="content painel-wide">
     <p v-if="carregando">Carregando...</p>
 
-    <template v-else>
+    <template v-else-if="painel">
       <div v-if="tilesKpi.length" class="painel-kpis">
         <div v-for="t in tilesKpi" :key="t.rotulo" class="kpi" :class="{ 'kpi-alerta': t.alerta }">
           <div class="kpi-valor">{{ t.valor }}</div>
@@ -126,60 +106,97 @@ onMounted(() => {
         </div>
       </div>
 
-      <div
-        v-if="solicitacoesStore.itens.length > 0"
-        class="card"
-        style="margin-bottom: 16px; cursor: pointer; border-color: var(--warning)"
-        @click="router.push('/ponto/solicitacoes')"
-      >
-        <strong>{{ solicitacoesStore.itens.length }} solicitação(ões) pendente(s)</strong>
-        <div style="color: var(--text-muted); font-size: 14px">Toque para revisar</div>
+      <div class="painel-colunas">
+        <!-- Operação de hoje -->
+        <section>
+          <h2>Operação de hoje</h2>
+          <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
+            <li v-for="m in equipe" :key="m.id" class="card">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px">
+                <strong>{{ m.nome }}</strong>
+                <span style="font-size: 13px" :style="{ color: m.ponto.hora ? 'var(--text)' : 'var(--text-muted)' }">
+                  {{ m.ponto.rotulo }}<template v-if="m.ponto.hora"> · {{ m.ponto.hora }}</template>
+                </span>
+              </div>
+              <div v-if="m.cargo" style="color: var(--text-muted); font-size: 13px">{{ m.cargo }}</div>
+              <div
+                v-if="m.os_atual"
+                style="margin-top: 4px; font-size: 13px; color: var(--accent); cursor: pointer"
+                @click="router.push(`/ordens-servico/${m.os_atual.id}`)"
+              >
+                🔧 {{ m.os_atual.numero }} · {{ m.os_atual.cliente }}<template v-if="m.os_atual.desde"> (desde {{ m.os_atual.desde }})</template>
+              </div>
+            </li>
+            <li v-if="equipe.length === 0" class="card">Ninguém na equipe.</li>
+          </ul>
+        </section>
+
+        <!-- Pendências -->
+        <section>
+          <h2>Pendências</h2>
+
+          <template v-if="eGestao && pendencias.solicitacoes.length">
+            <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 6px">Solicitações de ponto</div>
+            <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px">
+              <li v-for="s in pendencias.solicitacoes" :key="s.id" class="card" style="border-left: 3px solid var(--warning)">
+                <strong>{{ s.funcionario_nome }}</strong> — {{ s.tipo_display }}
+                <div style="color: var(--text-muted); font-size: 13px">{{ s.data_referencia }} · {{ s.descricao }}</div>
+                <div style="display: flex; gap: 8px; margin-top: 8px">
+                  <button class="btn" style="flex: 1; padding: 6px; font-size: 13px" :disabled="processandoSolic === s.id" @click="decidirSolic(s.id, true)">Aprovar</button>
+                  <button class="btn-secondary" style="flex: 1; padding: 6px; font-size: 13px" :disabled="processandoSolic === s.id" @click="decidirSolic(s.id, false)">Rejeitar</button>
+                </div>
+              </li>
+            </ul>
+          </template>
+
+          <template v-if="pendencias.os_sem_tecnico.length">
+            <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 6px">OS sem técnico</div>
+            <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px">
+              <li v-for="o in pendencias.os_sem_tecnico" :key="o.id" class="card" style="cursor: pointer" @click="router.push(`/ordens-servico/${o.id}`)">
+                <strong>{{ o.numero }}</strong> — {{ o.cliente_nome }}
+                <div style="color: var(--danger); font-size: 13px">aberta há {{ o.dias }} dia(s), sem técnico</div>
+              </li>
+            </ul>
+          </template>
+
+          <template v-if="pendencias.os_paradas.length">
+            <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 6px">OS paradas</div>
+            <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
+              <li v-for="o in pendencias.os_paradas" :key="o.id" class="card" style="cursor: pointer" @click="router.push(`/ordens-servico/${o.id}`)">
+                <strong>{{ o.numero }}</strong> — {{ o.cliente_nome }} · {{ o.tecnico_nome }}
+                <div style="color: var(--danger); font-size: 13px">{{ o.motivo }} há {{ o.dias }} dia(s)</div>
+              </li>
+            </ul>
+          </template>
+
+          <p
+            v-if="!pendencias.os_sem_tecnico.length && !pendencias.os_paradas.length && !(eGestao && pendencias.solicitacoes.length)"
+            class="card"
+            style="color: var(--text-muted)"
+          >
+            Nada pendente. 🎉
+          </p>
+        </section>
       </div>
 
-      <h2>Equipe hoje</h2>
-      <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px">
-        <li v-for="t in tecnicos" :key="t.id" class="card" style="display: flex; justify-content: space-between; align-items: center">
-          <div>
-            <strong>{{ t.first_name ? `${t.first_name} ${t.last_name}` : t.username }}</strong>
-            <div style="color: var(--text-muted); font-size: 13px">{{ t.cargo }}</div>
-          </div>
-          <div style="text-align: right">
-            <div>{{ statusPorTecnico[t.id]?.rotulo }}</div>
-            <div v-if="statusPorTecnico[t.id]?.hora" style="color: var(--text-muted); font-size: 13px">
-              {{ formatarHora(statusPorTecnico[t.id].hora) }}
-            </div>
-          </div>
-        </li>
-        <li v-if="tecnicos.length === 0" class="card">Ninguém cadastrado.</li>
-      </ul>
-
-      <h2>Ordens de serviço em aberto ({{ ordensAbertas.length }})</h2>
+      <h2 style="margin-top: 20px">Ordens de serviço em aberto ({{ painel.os_abertas.length }})</h2>
       <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
-        <li v-for="os in ordensAbertas" :key="os.id" class="card" style="cursor: pointer" @click="router.push(`/ordens-servico/${os.id}`)">
+        <li v-for="os in painel.os_abertas" :key="os.id" class="card" style="cursor: pointer" @click="router.push(`/ordens-servico/${os.id}`)">
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px">
             <strong>{{ os.numero }}</strong>
             <span class="badge" :class="`badge-${os.status.toLowerCase()}`">{{ os.status }}</span>
           </div>
           <div>{{ os.cliente_nome }} — {{ os.tecnico_nome || 'sem técnico' }}</div>
         </li>
-        <li v-if="ordensAbertas.length === 0" class="card">Nenhuma OS em aberto.</li>
+        <li v-if="painel.os_abertas.length === 0" class="card">Nenhuma OS em aberto.</li>
       </ul>
 
       <h2 style="margin-top: 20px">Comprovantes de OS</h2>
       <div class="card" style="display: flex; gap: 8px; margin-bottom: 8px">
-        <input
-          v-model="filtroMes"
-          type="month"
-          style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border)"
-        />
-        <select
-          v-model="filtroTecnico"
-          style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border)"
-        >
+        <input v-model="filtroMes" type="month" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border)" />
+        <select v-model="filtroTecnico" style="flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border)">
           <option value="">Todos os técnicos</option>
-          <option v-for="t in tecnicos" :key="t.id" :value="String(t.id)">
-            {{ t.first_name ? `${t.first_name} ${t.last_name}` : t.username }}
-          </option>
+          <option v-for="m in equipe" :key="m.id" :value="String(m.id)">{{ m.nome }}</option>
         </select>
       </div>
       <p v-if="carregandoConcluidas" style="color: var(--text-muted)">Carregando...</p>
@@ -200,9 +217,7 @@ onMounted(() => {
             Concluída em {{ new Date(os.data_conclusao).toLocaleDateString('pt-BR') }}
           </div>
         </li>
-        <li v-if="ordensConcluidas.length === 0" class="card">
-          Nenhuma OS concluída neste filtro.
-        </li>
+        <li v-if="ordensConcluidas.length === 0" class="card">Nenhuma OS concluída neste filtro.</li>
       </ul>
     </template>
   </div>

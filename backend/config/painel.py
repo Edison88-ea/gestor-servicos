@@ -1,11 +1,17 @@
-"""Painel do gestor: um endpoint agregado com os números que a gestão olha.
+"""Painel do gestor: um endpoint agregado com o que a gestão olha no dia a dia.
 
 Fica em config/ (não num app) porque cruza service_orders, timeclock e
-projects. Só gestor/RH/admin acessam.
+projects.
+
+Escopo:
+- GESTOR / RH / ADMIN: a empresa toda.
+- ENCARREGADO: a própria equipe (ele + quem se reporta a ele). Não vê
+  solicitações de ponto (não aprova).
 """
 
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -15,7 +21,7 @@ from rest_framework.response import Response
 from apps.accounts.models import Usuario
 from apps.projects.models import Projeto
 from apps.service_orders.models import OrdemServico
-from apps.timeclock.models import SolicitacaoPonto
+from apps.timeclock.models import RegistroPonto, SolicitacaoPonto
 from apps.timeclock.views import _calcular_dias
 
 _OS_ABERTAS = [
@@ -25,56 +31,201 @@ _OS_ABERTAS = [
     OrdemServico.Status.PAUSADA,
 ]
 _OBRAS_ATIVAS = [Projeto.Status.PLANEJADO, Projeto.Status.EM_ANDAMENTO]
+_PONTO_ROTULO = {
+    "ENTRADA": "Em jornada",
+    "VOLTA_INTERVALO": "Em jornada",
+    "SAIDA_INTERVALO": "Em intervalo",
+    "SAIDA": "Jornada encerrada",
+}
 
 
-def _saldo_horas_mes(inicio_mes, ate):
-    """Soma, de todos os funcionários de campo, as horas extras e faltantes do
-    mês até `ate` (exclui hoje, que ainda está em curso)."""
-    extras = faltantes = 0
-    if ate < inicio_mes:
-        return 0, 0
-    funcionarios = Usuario.objects.filter(
+def _funcionarios(user):
+    base = Usuario.objects.filter(
         is_active=True,
         papel__in=[Usuario.Papel.TECNICO, Usuario.Papel.ENCARREGADO],
     )
-    for func in funcionarios:
-        for dia in _calcular_dias(func, inicio_mes.isoformat(), ate.isoformat(), None):
-            if dia["saldo_minutos"] > 0:
-                extras += dia["saldo_minutos"]
-            elif dia["saldo_minutos"] < 0:
-                faltantes += -dia["saldo_minutos"]
+    if user.e_gestao:
+        return base
+    return base.filter(Q(encarregado_responsavel=user) | Q(id=user.id))
+
+
+def _ordens(user):
+    qs = OrdemServico.objects.select_related("cliente", "tecnico")
+    if user.e_gestao:
+        return qs
+    ids = [user.id, *user.equipe.values_list("id", flat=True)]
+    return qs.filter(tecnico_id__in=ids)
+
+
+def _saldo_horas_mes(funcionarios, inicio_mes, ate):
+    extras = faltantes = 0
+    if ate >= inicio_mes:
+        for func in funcionarios:
+            for dia in _calcular_dias(func, inicio_mes.isoformat(), ate.isoformat(), None):
+                if dia["saldo_minutos"] > 0:
+                    extras += dia["saldo_minutos"]
+                elif dia["saldo_minutos"] < 0:
+                    faltantes += -dia["saldo_minutos"]
     return extras, faltantes
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def painel(request):
-    if not request.user.e_gestao:
-        raise PermissionDenied("Apenas gestor, RH ou admin.")
+    user = request.user
+    if not (user.e_gestao or user.papel == Usuario.Papel.ENCARREGADO):
+        raise PermissionDenied("Sem acesso ao painel.")
 
+    agora = timezone.now()
     hoje = timezone.localdate()
     inicio_semana = hoje - timedelta(days=hoje.weekday())
     inicio_mes = hoje.replace(day=1)
 
-    os_qs = OrdemServico.objects.all()
-    extras, faltantes = _saldo_horas_mes(inicio_mes, hoje - timedelta(days=1))
+    funcionarios = list(_funcionarios(user))
+    os_qs = _ordens(user)
 
+    # --- KPIs ---
+    extras, faltantes = _saldo_horas_mes(funcionarios, inicio_mes, hoje - timedelta(days=1))
     kpis = {
         "os_abertas": os_qs.filter(status__in=_OS_ABERTAS).count(),
         "os_concluidas_semana": os_qs.filter(
-            status=OrdemServico.Status.CONCLUIDA,
-            data_conclusao__date__gte=inicio_semana,
+            status=OrdemServico.Status.CONCLUIDA, data_conclusao__date__gte=inicio_semana
         ).count(),
         "os_concluidas_mes": os_qs.filter(
-            status=OrdemServico.Status.CONCLUIDA,
-            data_conclusao__date__gte=inicio_mes,
+            status=OrdemServico.Status.CONCLUIDA, data_conclusao__date__gte=inicio_mes
         ).count(),
-        "solicitacoes_pendentes": SolicitacaoPonto.objects.filter(
-            status=SolicitacaoPonto.Status.PENDENTE
-        ).count(),
+        "solicitacoes_pendentes": (
+            SolicitacaoPonto.objects.filter(status=SolicitacaoPonto.Status.PENDENTE).count()
+            if user.e_gestao
+            else 0
+        ),
         "obras_ativas": Projeto.objects.filter(status__in=_OBRAS_ATIVAS).count(),
         "horas_extras_mes_min": extras,
         "horas_faltantes_mes_min": faltantes,
     }
 
-    return Response({"kpis": kpis, "gerado_em": timezone.now()})
+    # --- Operação de hoje: ponto + OS em andamento de cada um ---
+    ids = [f.id for f in funcionarios]
+    ultimo_ponto = {}
+    for r in RegistroPonto.objects.filter(
+        funcionario_id__in=ids, registrado_em__date=hoje
+    ).order_by("registrado_em"):
+        ultimo_ponto[r.funcionario_id] = r
+
+    os_em_andamento = {}
+    for o in os_qs.filter(status=OrdemServico.Status.EM_ANDAMENTO, tecnico_id__in=ids).order_by(
+        "-data_inicio"
+    ):
+        os_em_andamento.setdefault(o.tecnico_id, o)
+
+    equipe = []
+    for f in funcionarios:
+        r = ultimo_ponto.get(f.id)
+        o = os_em_andamento.get(f.id)
+        equipe.append(
+            {
+                "id": f.id,
+                "nome": f.get_full_name() or f.username,
+                "cargo": f.cargo,
+                "papel": f.papel,
+                "ponto": (
+                    {
+                        "rotulo": _PONTO_ROTULO.get(r.tipo, r.tipo),
+                        "hora": timezone.localtime(r.registrado_em).strftime("%H:%M"),
+                    }
+                    if r
+                    else {"rotulo": "Não bateu ponto", "hora": None}
+                ),
+                "os_atual": (
+                    {
+                        "id": o.id,
+                        "numero": o.numero,
+                        "cliente": o.cliente.nome,
+                        "desde": timezone.localtime(o.data_inicio).strftime("%H:%M")
+                        if o.data_inicio
+                        else None,
+                    }
+                    if o
+                    else None
+                ),
+            }
+        )
+
+    # --- Pendências ---
+    solicitacoes = []
+    if user.e_gestao:
+        for s in SolicitacaoPonto.objects.filter(
+            status=SolicitacaoPonto.Status.PENDENTE
+        ).select_related("funcionario").order_by("criado_em"):
+            solicitacoes.append(
+                {
+                    "id": s.id,
+                    "funcionario_nome": s.funcionario.get_full_name() or s.funcionario.username,
+                    "tipo_display": s.get_tipo_display(),
+                    "data_referencia": s.data_referencia.isoformat(),
+                    "descricao": s.descricao,
+                }
+            )
+
+    os_sem_tecnico = [
+        {
+            "id": o.id,
+            "numero": o.numero,
+            "cliente_nome": o.cliente.nome,
+            "dias": (agora - o.criado_em).days,
+        }
+        for o in os_qs.filter(status__in=_OS_ABERTAS, tecnico__isnull=True).order_by("criado_em")
+    ]
+
+    limite_atribuida = agora - timedelta(days=2)
+    limite_andamento = agora - timedelta(days=3)
+    paradas = []
+    for o in os_qs.filter(status__in=_OS_ABERTAS).exclude(tecnico__isnull=True).order_by("criado_em"):
+        if o.status == OrdemServico.Status.ATRIBUIDA and o.data_inicio is None and o.criado_em < limite_atribuida:
+            motivo = "sem iniciar"
+            base = o.criado_em
+        elif o.status in (OrdemServico.Status.EM_ANDAMENTO, OrdemServico.Status.PAUSADA) and o.atualizado_em < limite_andamento:
+            motivo = "sem movimento"
+            base = o.atualizado_em
+        else:
+            continue
+        paradas.append(
+            {
+                "id": o.id,
+                "numero": o.numero,
+                "cliente_nome": o.cliente.nome,
+                "tecnico_nome": o.tecnico.get_full_name() or o.tecnico.username,
+                "status": o.status,
+                "motivo": motivo,
+                "dias": (agora - base).days,
+            }
+        )
+
+    os_abertas_lista = [
+        {
+            "id": o.id,
+            "numero": o.numero,
+            "cliente_nome": o.cliente.nome,
+            "tecnico_nome": (o.tecnico.get_full_name() or o.tecnico.username) if o.tecnico else None,
+            "status": o.status,
+            "prioridade": o.prioridade,
+        }
+        for o in os_qs.filter(
+            status__in=[OrdemServico.Status.ATRIBUIDA, OrdemServico.Status.EM_ANDAMENTO, OrdemServico.Status.PAUSADA]
+        ).order_by("-criado_em")
+    ]
+
+    return Response(
+        {
+            "kpis": kpis,
+            "equipe": equipe,
+            "pendencias": {
+                "solicitacoes": solicitacoes,
+                "os_sem_tecnico": os_sem_tecnico,
+                "os_paradas": paradas,
+            },
+            "os_abertas": os_abertas_lista,
+            "e_gestao": user.e_gestao,
+            "gerado_em": agora,
+        }
+    )
