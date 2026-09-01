@@ -3,10 +3,16 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useOrdensServicoStore } from '../stores/ordensServico'
 import { useNovaOsRascunhoStore } from '../stores/novaOsRascunho'
+import { useAuthStore } from '../stores/auth'
 import ModalNovaTarefa from '../components/ModalNovaTarefa.vue'
 
 const store = useOrdensServicoStore()
 const rascunho = useNovaOsRascunhoStore()
+const auth = useAuthStore()
+
+// Técnico só vê OS dele — mostrar o nome seria repetição. Encarregado/gestor
+// veem OS da equipe, então o responsável importa.
+const mostraTecnico = () => auth.user?.papel !== 'TECNICO'
 const router = useRouter()
 
 const modalAberto = ref(false)
@@ -70,6 +76,12 @@ function estouNoLocal() {
             </div>
             <div>{{ os.cliente_nome }}</div>
             <div style="color: var(--text-muted); font-size: 14px">{{ os.tipo_servico }}</div>
+            <div
+              v-if="mostraTecnico() && os.tecnico_nome"
+              style="color: var(--accent); font-size: 13px; margin-top: 2px"
+            >
+              👷 {{ os.tecnico_nome }}
+            </div>
             <div v-if="os.offline" style="color: var(--warning); font-size: 13px; margin-top: 4px">
               ⚠ Criada offline — será enviada quando houver sinal<template v-if="os.erroSync"> · {{ os.erroSync }}</template>
             </div>
