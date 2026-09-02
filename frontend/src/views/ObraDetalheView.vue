@@ -316,16 +316,16 @@ onMounted(async () => {
 
     <h3 style="margin: 16px 0 8px">Plantas</h3>
     <div style="display: flex; flex-wrap: wrap; gap: 8px">
-      <a
+      <button
         v-for="p in obra.plantas"
         :key="p.id"
-        :href="p.arquivo"
-        target="_blank"
+        type="button"
         class="card"
-        style="padding: 10px 12px; font-size: 14px; text-decoration: none; color: var(--accent)"
+        style="padding: 10px 12px; font-size: 14px; text-align: left; color: var(--accent); border: 1px solid var(--border)"
+        @click="lightbox.abrir(p.arquivo, `Folha ${p.pagina || '?'}${p.descricao ? ' — ' + p.descricao : ''}`)"
       >
         📄 Folha {{ p.pagina || '?' }}<template v-if="p.descricao"> — {{ p.descricao }}</template>
-      </a>
+      </button>
       <label v-if="podeGerenciar" class="btn-secondary" style="padding: 10px 12px; font-size: 14px">
         + Anexar planta
         <input type="file" accept=".pdf,image/*" style="display: none" @change="enviarPlanta" />

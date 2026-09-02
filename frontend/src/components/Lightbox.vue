@@ -1,9 +1,11 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 const aberto = ref(false)
 const src = ref('')
 const legenda = ref('')
+
+const ehPdf = computed(() => /\.pdf(\?|#|$)/i.test(src.value))
 
 function abrir(url, texto = '') {
   src.value = url
@@ -25,13 +27,29 @@ defineExpose({ abrir })
     >
       <button
         type="button"
+        aria-label="Voltar"
+        style="position: absolute; top: 12px; left: 12px; border: none; background: rgba(0, 0, 0, 0.4); color: #fff; font-size: 22px; padding: 6px 14px; line-height: 1; border-radius: 999px"
+        @click.stop="fechar"
+      >
+        ← Voltar
+      </button>
+      <button
+        type="button"
         aria-label="Fechar"
         style="position: absolute; top: 12px; right: 12px; border: none; background: none; color: #fff; font-size: 30px; padding: 8px 12px; line-height: 1"
         @click.stop="fechar"
       >
         ✕
       </button>
+      <iframe
+        v-if="ehPdf"
+        :src="src"
+        :title="legenda || 'Documento'"
+        style="width: 100%; height: 84vh; border: none; border-radius: 8px; background: #fff"
+        @click.stop
+      />
       <img
+        v-else
         :src="src"
         :alt="legenda"
         style="max-width: 100%; max-height: 84vh; object-fit: contain; border-radius: 8px"
