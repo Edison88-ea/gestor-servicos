@@ -4,8 +4,10 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useObrasStore } from '../stores/obras'
 import AssinaturaCanvas from '../components/AssinaturaCanvas.vue'
+import Lightbox from '../components/Lightbox.vue'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
+const lightbox = ref(null)
 const router = useRouter()
 const auth = useAuthStore()
 const store = useObrasStore()
@@ -282,13 +284,14 @@ onMounted(async () => {
       </div>
 
       <div v-if="etapa.fotos?.length" style="display: flex; gap: 6px; overflow-x: auto; margin-top: 10px">
-        <a v-for="f in etapa.fotos" :key="f.id" :href="f.imagem" target="_blank">
-          <img
-            :src="f.imagem"
-            :alt="f.legenda"
-            style="height: 64px; width: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border)"
-          />
-        </a>
+        <img
+          v-for="f in etapa.fotos"
+          :key="f.id"
+          :src="f.imagem"
+          :alt="f.legenda"
+          style="height: 64px; width: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; flex: 0 0 auto"
+          @click="lightbox.abrir(f.imagem, f.legenda)"
+        />
       </div>
 
       <button
@@ -378,4 +381,6 @@ onMounted(async () => {
       + Coletar assinatura
     </button>
   </div>
+
+  <Lightbox ref="lightbox" />
 </template>

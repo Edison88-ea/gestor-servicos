@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/auth'
 import AssinaturaCanvas from '../components/AssinaturaCanvas.vue'
 import RelatoOs from '../components/RelatoOs.vue'
 import ModalCopiarRelato from '../components/ModalCopiarRelato.vue'
+import Lightbox from '../components/Lightbox.vue'
 
 const MOTIVOS_PAUSA = [
   { valor: 'ALMOCO', rotulo: 'Almoço' },
@@ -39,6 +40,7 @@ const observacaoPausa = ref('')
 const erroPausa = ref('')
 
 const mostrarCopiar = ref(false)
+const lightbox = ref(null)
 
 function aplicarRelatoCopiado(copiado) {
   const base = relatoVazio()
@@ -263,9 +265,14 @@ onMounted(carregar)
         v-if="ordem.fotos.length"
         style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px"
       >
-        <a v-for="foto in ordem.fotos" :key="foto.id" :href="foto.imagem" target="_blank">
-          <img :src="foto.imagem" :alt="foto.legenda" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px" />
-        </a>
+        <img
+          v-for="foto in ordem.fotos"
+          :key="foto.id"
+          :src="foto.imagem"
+          :alt="foto.legenda"
+          style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: pointer"
+          @click="lightbox.abrir(foto.imagem, foto.legenda)"
+        />
       </div>
       <p v-else style="color: var(--text-muted); margin: 0 0 12px">Nenhuma foto enviada ainda.</p>
 
@@ -336,4 +343,6 @@ onMounted(carregar)
       </div>
     </div>
   </div>
+
+  <Lightbox ref="lightbox" />
 </template>

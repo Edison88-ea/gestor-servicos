@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { usePontoStore } from './stores/ponto'
 import { useNotificacoesStore } from './stores/notificacoes'
@@ -21,6 +22,17 @@ const online = ref(navigator.onLine)
 const menuAberto = ref(false)
 const notificacoesAbertas = ref(false)
 const ehGestao = computed(() => ['GESTOR', 'RH', 'ADMIN'].includes(auth.user?.papel))
+
+const route = useRoute()
+const router = useRouter()
+const ROTAS_RAIZ = ['ponto', 'painel-gestor', 'login']
+const podeVoltar = computed(
+  () => auth.isAuthenticated && !!route.name && !ROTAS_RAIZ.includes(route.name),
+)
+function voltar() {
+  if (window.history.state?.back != null) router.back()
+  else router.push({ name: ehGestao.value ? 'painel-gestor' : 'ponto' })
+}
 let intervaloNotificacoes = null
 
 async function sincronizarTudo() {
@@ -100,7 +112,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="auth.isAuthenticated" class="app-header">
-    <button type="button" style="border: none; background: none; font-size: 20px; padding: 4px 6px" @click="menuAberto = true">☰</button>
+    <button v-if="podeVoltar" type="button" aria-label="Voltar" style="border: none; background: none; font-size: 22px; padding: 4px 6px" @click="voltar">←</button>
+    <button type="button" aria-label="Menu" style="border: none; background: none; font-size: 20px; padding: 4px 6px" @click="menuAberto = true">☰</button>
     <Logo3D :tamanho="22" />
     <strong style="font-size: 14px; flex: 1">3D Sistemas</strong>
     <button
