@@ -20,4 +20,28 @@ class UsuarioAdmin(UserAdmin):
                 "description": "Definida pelo RH. Deixe um período em branco (início e fim) se o funcionário só tiver um turno.",
             },
         ),
+        (
+            "Dados pessoais",
+            {"fields": ("data_nascimento", "estado_civil", "genero", "nome_mae")},
+        ),
+        (
+            "Documentos",
+            {"fields": ("cpf", "rg", "pis", "ctps_numero", "ctps_serie")},
+        ),
+        (
+            "Endereço",
+            {"fields": ("cep", "logradouro", "numero_endereco", "complemento", "bairro", "cidade", "estado")},
+        ),
+        (
+            "Contrato",
+            {"fields": ("data_admissao", "data_desligamento", "salario")},
+        ),
+        (
+            "Dados bancários",
+            {"fields": ("banco", "agencia", "conta", "pix")},
+        ),
+        (
+            "Contato de emergência",
+            {"fields": ("contato_emergencia_nome", "contato_emergencia_telefone", "contato_emergencia_parentesco")},
+        ),
     )

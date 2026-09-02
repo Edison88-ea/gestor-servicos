@@ -66,6 +66,8 @@ function sair() {
         <button type="button" class="item-menu" @click="irPara('/ponto/indicadores')">Indicadores</button>
         <button type="button" class="item-menu" @click="irPara('/ponto/espelho')">Cartão Ponto</button>
         <button type="button" class="item-menu" @click="irPara('/ponto/solicitacoes')">Solicitações</button>
+        <button v-if="ehGestao" type="button" class="item-menu" @click="irPara('/funcionarios')">Funcionários</button>
+        <button v-else type="button" class="item-menu" @click="irPara('/meus-dados')">Meus dados</button>
         <button type="button" class="item-menu" @click="irPara('/ordens-servico')">Ordens de Serviço</button>
         <button type="button" class="item-menu" @click="irPara('/obras')">Obras</button>
         <button type="button" class="item-menu" @click="irPara('/clientes')">Clientes</button>

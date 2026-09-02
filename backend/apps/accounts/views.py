@@ -1,9 +1,11 @@
-from rest_framework import permissions, viewsets
+from django.utils import timezone
+from rest_framework import filters, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import Usuario
-from .serializers import UsuarioSerializer
+from .permissions import EhGestao
+from .serializers import FuncionarioSerializer, UsuarioSerializer
 
 
 class UsuarioViewSet(viewsets.ReadOnlyModelViewSet):
@@ -24,5 +26,36 @@ class UsuarioViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def me(self, request):
+        serializer = self.get_serializer(request.user)
+        return Response(serializer.data)
+
+
+class FuncionarioViewSet(viewsets.ModelViewSet):
+    """Cadastro de funcionários (RH). Criar, editar e desligar.
+
+    Desligar = inativar (is_active=False); o histórico de ponto/OS é preservado.
+    O próprio funcionário consulta seus dados por /funcionarios/meu/ (leitura)."""
+
+    serializer_class = FuncionarioSerializer
+    permission_classes = [EhGestao]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["first_name", "last_name", "username", "cpf", "cargo"]
+
+    def get_queryset(self):
+        qs = Usuario.objects.order_by("first_name", "last_name", "id")
+        incluir_inativos = self.request.query_params.get("incluir_inativos") in ("1", "true", "True")
+        if not incluir_inativos:
+            qs = qs.filter(is_active=True)
+        return qs
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        if not instance.data_desligamento:
+            instance.data_desligamento = timezone.localdate()
+        instance.save(update_fields=["is_active", "data_desligamento"])
+
+    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated])
+    def meu(self, request):
+        """Os próprios dados cadastrais, em leitura, para qualquer funcionário."""
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)

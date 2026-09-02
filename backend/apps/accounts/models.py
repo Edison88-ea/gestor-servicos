@@ -12,6 +12,19 @@ class Usuario(AbstractUser):
         RH = "RH", "RH"
         ADMIN = "ADMIN", "Administrador"
 
+    class EstadoCivil(models.TextChoices):
+        SOLTEIRO = "SOLTEIRO", "Solteiro(a)"
+        CASADO = "CASADO", "Casado(a)"
+        DIVORCIADO = "DIVORCIADO", "Divorciado(a)"
+        VIUVO = "VIUVO", "Viúvo(a)"
+        UNIAO_ESTAVEL = "UNIAO_ESTAVEL", "União estável"
+
+    class Genero(models.TextChoices):
+        MASCULINO = "MASCULINO", "Masculino"
+        FEMININO = "FEMININO", "Feminino"
+        OUTRO = "OUTRO", "Outro"
+        NAO_INFORMAR = "NAO_INFORMAR", "Prefiro não informar"
+
     papel = models.CharField(
         max_length=20, choices=Papel.choices, default=Papel.TECNICO
     )
@@ -37,6 +50,40 @@ class Usuario(AbstractUser):
     periodo1_fim = models.TimeField(null=True, blank=True, default=time(12, 0))
     periodo2_inicio = models.TimeField(null=True, blank=True, default=time(13, 0))
     periodo2_fim = models.TimeField(null=True, blank=True, default=time(18, 0))
+
+    # --- Dados cadastrais (mantidos pelo RH; ver apps.accounts.FuncionarioViewSet) ---
+    # Pessoais
+    data_nascimento = models.DateField(null=True, blank=True)
+    estado_civil = models.CharField(max_length=20, blank=True, choices=EstadoCivil.choices)
+    genero = models.CharField(max_length=20, blank=True, choices=Genero.choices)
+    nome_mae = models.CharField(max_length=150, blank=True)
+    # Documentos
+    cpf = models.CharField(max_length=14, blank=True)
+    rg = models.CharField(max_length=20, blank=True)
+    pis = models.CharField("PIS/NIS", max_length=20, blank=True)
+    ctps_numero = models.CharField("CTPS nº", max_length=20, blank=True)
+    ctps_serie = models.CharField("CTPS série", max_length=20, blank=True)
+    # Endereço
+    cep = models.CharField(max_length=9, blank=True)
+    logradouro = models.CharField(max_length=150, blank=True)
+    numero_endereco = models.CharField("número", max_length=10, blank=True)
+    complemento = models.CharField(max_length=60, blank=True)
+    bairro = models.CharField(max_length=80, blank=True)
+    cidade = models.CharField(max_length=80, blank=True)
+    estado = models.CharField("UF", max_length=2, blank=True)
+    # Contrato
+    data_admissao = models.DateField(null=True, blank=True)
+    data_desligamento = models.DateField(null=True, blank=True)
+    salario = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Bancários
+    banco = models.CharField(max_length=60, blank=True)
+    agencia = models.CharField(max_length=15, blank=True)
+    conta = models.CharField(max_length=20, blank=True)
+    pix = models.CharField(max_length=140, blank=True)
+    # Contato de emergência
+    contato_emergencia_nome = models.CharField(max_length=120, blank=True)
+    contato_emergencia_telefone = models.CharField(max_length=20, blank=True)
+    contato_emergencia_parentesco = models.CharField(max_length=40, blank=True)
 
     def __str__(self):
         return self.get_full_name() or self.username

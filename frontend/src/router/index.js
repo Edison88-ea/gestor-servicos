@@ -12,6 +12,8 @@ import IndicadoresView from '../views/IndicadoresView.vue'
 import SolicitacoesPontoView from '../views/SolicitacoesPontoView.vue'
 import NovaSolicitacaoPontoView from '../views/NovaSolicitacaoPontoView.vue'
 import PainelGestorView from '../views/PainelGestorView.vue'
+import FuncionariosView from '../views/FuncionariosView.vue'
+import MeusDadosView from '../views/MeusDadosView.vue'
 import OrdensServicoView from '../views/OrdensServicoView.vue'
 import NovaOrdemServicoView from '../views/NovaOrdemServicoView.vue'
 import OrdemServicoDetalheView from '../views/OrdemServicoDetalheView.vue'
@@ -36,6 +38,8 @@ const routes = [
     meta: { auth: true },
   },
   { path: '/gestor', name: 'painel-gestor', component: PainelGestorView, meta: { auth: true, gestor: true } },
+  { path: '/funcionarios', name: 'funcionarios', component: FuncionariosView, meta: { auth: true, gestor: true } },
+  { path: '/meus-dados', name: 'meus-dados', component: MeusDadosView, meta: { auth: true } },
   { path: '/clientes', name: 'clientes', component: ClientesView, meta: { auth: true } },
   { path: '/ordens-servico', name: 'ordens-servico', component: OrdensServicoView, meta: { auth: true } },
   { path: '/ordens-servico/nova', name: 'nova-ordem-servico', component: NovaOrdemServicoView, meta: { auth: true } },
