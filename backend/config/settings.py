@@ -267,17 +267,32 @@ LOGGING = {
 
 
 # Sentry (rastreamento de erros). Opcional: sem SENTRY_DSN definido, não faz
-# nada. Com o DSN, todo erro 500 vai pro painel do Sentry com traceback,
-# request e usuário — e dá pra configurar alerta por e-mail.
+# nada. Com o DSN, todo erro 500 vai pro painel do Sentry com traceback e o
+# id do usuário logado — e dá pra configurar alerta por e-mail.
 SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
     import sentry_sdk
 
+    def _sentry_scrub(event, hint):
+        # Defesa em profundidade: nunca deixa corpo/cookies/headers de request
+        # subirem pro Sentry. A ficha de funcionário (CPF, salário, dados
+        # bancários, senha inicial no POST) trafega por aí e não pode vazar
+        # pra um serviço externo.
+        req = event.get("request")
+        if req:
+            for chave in ("data", "cookies", "headers", "query_string"):
+                req.pop(chave, None)
+        return event
+
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         environment=env("SENTRY_ENVIRONMENT", default="production"),
-        # Anexa o usuário logado ao erro (app interno, ajuda a reproduzir).
-        send_default_pii=True,
+        # PII desligado: sem IP, sem e-mail/username, sem corpo de request.
+        # O Sentry ainda anexa o id do usuário, o suficiente pra identificar
+        # quem sem expor dado pessoal.
+        send_default_pii=False,
+        max_request_body_size="never",
+        before_send=_sentry_scrub,
         # Só rastreamento de erros; performance/tracing desligado p/ não gastar
         # a cota do plano free.
         traces_sample_rate=0.0,

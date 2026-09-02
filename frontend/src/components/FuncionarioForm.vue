@@ -82,6 +82,7 @@ const encarregados = ref([])
 const salvando = ref(false)
 const inativando = ref(false)
 const erro = ref('')
+const mostrarSenha = ref(false)
 
 function nomeDe(u) {
   return u.first_name ? `${u.first_name} ${u.last_name}`.trim() : u.username
@@ -179,7 +180,22 @@ async function reativar() {
         <label>Usuário *<input v-model="form.username" type="text" autocapitalize="none" /></label>
         <label>
           {{ funcionario ? 'Nova senha (deixe em branco para manter)' : 'Senha inicial *' }}
-          <input v-model="form.password" type="text" autocomplete="new-password" />
+          <span style="display: flex; gap: 6px">
+            <input
+              v-model="form.password"
+              :type="mostrarSenha ? 'text' : 'password'"
+              autocomplete="new-password"
+              style="flex: 1"
+            />
+            <button
+              type="button"
+              class="btn-secondary"
+              style="padding: 0 10px; font-size: 13px"
+              @click="mostrarSenha = !mostrarSenha"
+            >
+              {{ mostrarSenha ? 'Ocultar' : 'Mostrar' }}
+            </button>
+          </span>
         </label>
         <label>Papel<select v-model="form.papel">
           <option v-for="[v, r] in PAPEIS" :key="v" :value="v">{{ r }}</option>
