@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePontoStore } from '../stores/ponto'
 import GraficoBarras from '../components/GraficoBarras.vue'
+import SeletorFuncionario from '../components/SeletorFuncionario.vue'
 import { dataLocalISO, formatarMinutos } from '../utils/tempo'
 
 const router = useRouter()
@@ -12,6 +13,7 @@ const hoje = new Date()
 const dataInicio = ref(dataLocalISO(new Date(hoje.getFullYear(), hoje.getMonth(), 1)))
 const dataFim = ref(dataLocalISO(hoje))
 const agruparPor = ref('semana')
+const funcionarioSel = ref('')
 
 const carregando = ref(false)
 const erro = ref('')
@@ -31,6 +33,7 @@ async function carregar() {
       dataInicio: dataInicio.value,
       dataFim: dataFim.value,
       agruparPor: agruparPor.value,
+      funcionario: funcionarioSel.value || undefined,
     })
   } catch {
     erro.value = 'Não foi possível carregar os indicadores.'
@@ -39,7 +42,7 @@ async function carregar() {
   }
 }
 
-watch([dataInicio, dataFim, agruparPor], carregar, { immediate: true })
+watch([dataInicio, dataFim, agruparPor, funcionarioSel], carregar, { immediate: true })
 </script>
 
 <template>
@@ -49,6 +52,8 @@ watch([dataInicio, dataFim, agruparPor], carregar, { immediate: true })
   </div>
 
   <div class="content">
+    <SeletorFuncionario v-model="funcionarioSel" />
+
     <div class="card" style="margin-bottom: 16px">
       <h2 style="margin: 0 0 10px">Filtrar</h2>
       <div style="display: flex; gap: 10px">

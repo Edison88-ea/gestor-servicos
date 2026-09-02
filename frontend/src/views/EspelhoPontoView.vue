@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { usePontoStore } from '../stores/ponto'
 import { useAuthStore } from '../stores/auth'
 import { dataLocalISO, formatarMinutos } from '../utils/tempo'
+import SeletorFuncionario from '../components/SeletorFuncionario.vue'
 
 const store = usePontoStore()
 const auth = useAuthStore()
@@ -19,6 +20,14 @@ const espelho = ref(null)
 const carregando = ref(false)
 const erro = ref('')
 const modo = ref('completo') // 'resumido' | 'completo'
+const funcionarioSel = ref('') // '' = o próprio usuário (gestão pode ver outros)
+const nomeFuncionario = ref('')
+
+const nomeNoCabecalho = computed(
+  () =>
+    nomeFuncionario.value ||
+    (auth.user?.first_name ? `${auth.user.first_name} ${auth.user.last_name}` : auth.user?.username),
+)
 
 const rotuloMes = computed(() =>
   mesReferencia.value.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
@@ -62,6 +71,7 @@ async function carregarMes() {
     espelho.value = await store.buscarEspelho({
       dataInicio: dataLocalISO(inicio),
       dataFim: dataLocalISO(fim),
+      funcionario: funcionarioSel.value || undefined,
     })
   } catch {
     erro.value = 'Não foi possível carregar o cartão de ponto.'
@@ -78,7 +88,7 @@ function mudarMes(delta) {
   )
 }
 
-watch(mesReferencia, carregarMes, { immediate: true })
+watch([mesReferencia, funcionarioSel], carregarMes, { immediate: true })
 </script>
 
 <template>
@@ -92,11 +102,11 @@ watch(mesReferencia, carregarMes, { immediate: true })
 
   <div class="content">
     <div class="somente-impressao" style="display: none; margin-bottom: 12px">
-      <strong style="font-size: 18px">
-        {{ auth.user?.first_name ? `${auth.user.first_name} ${auth.user.last_name}` : auth.user?.username }}
-      </strong>
+      <strong style="font-size: 18px">{{ nomeNoCabecalho }}</strong>
       <div>Cartão Ponto — <span style="text-transform: capitalize">{{ rotuloMes }}</span></div>
     </div>
+
+    <SeletorFuncionario v-model="funcionarioSel" @trocou="nomeFuncionario = $event || ''" />
 
     <div class="ocultar-impressao card" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px">
       <button class="btn-secondary" style="padding: 6px 12px" @click="mudarMes(-1)">‹</button>

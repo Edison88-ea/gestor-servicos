@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
 import { usePontoStore } from './stores/ponto'
 import { useNotificacoesStore } from './stores/notificacoes'
@@ -20,6 +20,7 @@ const ordens = useOrdensServicoStore()
 const online = ref(navigator.onLine)
 const menuAberto = ref(false)
 const notificacoesAbertas = ref(false)
+const ehGestao = computed(() => ['GESTOR', 'RH', 'ADMIN'].includes(auth.user?.papel))
 let intervaloNotificacoes = null
 
 async function sincronizarTudo() {
@@ -145,7 +146,8 @@ onBeforeUnmount(() => {
   <RouterView />
 
   <nav v-if="auth.isAuthenticated" class="bottom-nav">
-    <RouterLink to="/">Ponto</RouterLink>
+    <RouterLink v-if="ehGestao" to="/gestor">Painel</RouterLink>
+    <RouterLink v-else to="/">Ponto</RouterLink>
     <RouterLink to="/ordens-servico">Ordens de Serviço</RouterLink>
   </nav>
 

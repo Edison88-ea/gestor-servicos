@@ -86,20 +86,27 @@ const router = createRouter({
 const PAPEIS_GESTAO = ['GESTOR', 'RH', 'ADMIN']
 const PAPEIS_OBRA = ['ENCARREGADO', 'GESTOR', 'ADMIN']
 
+// Gestão (RH/gestor/dono) não bate ponto — a home deles é o Painel.
+const paginaInicial = (papel) =>
+  PAPEIS_GESTAO.includes(papel) ? { name: 'painel-gestor' } : { name: 'ponto' }
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
+  const papel = auth.user?.papel
   if (to.meta.auth && !auth.isAuthenticated) {
     return { name: 'login' }
   }
   if (to.name === 'login' && auth.isAuthenticated) {
-    return { name: 'ponto' }
+    return paginaInicial(papel)
   }
-  const papel = auth.user?.papel
+  if (to.name === 'ponto' && PAPEIS_GESTAO.includes(papel)) {
+    return { name: 'painel-gestor' }
+  }
   if (to.meta.gestor && !PAPEIS_GESTAO.includes(papel)) {
     return { name: 'ponto' }
   }
   if (to.meta.obra && !PAPEIS_OBRA.includes(papel)) {
-    return { name: 'ponto' }
+    return paginaInicial(papel)
   }
 })
 

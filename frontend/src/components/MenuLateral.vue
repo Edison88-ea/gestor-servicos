@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import Logo3D from './Logo3D.vue'
@@ -8,6 +9,8 @@ const emit = defineEmits(['fechar'])
 
 const auth = useAuthStore()
 const router = useRouter()
+
+const ehGestao = computed(() => ['GESTOR', 'RH', 'ADMIN'].includes(auth.user?.papel))
 
 function formatarHora(valor) {
   return valor ? valor.slice(0, 5) : null
@@ -58,8 +61,8 @@ function sair() {
       </div>
 
       <nav style="padding: 8px 0; display: flex; flex-direction: column">
-        <button v-if="['GESTOR', 'RH', 'ADMIN'].includes(auth.user?.papel)" type="button" class="item-menu" @click="irPara('/gestor')">Painel</button>
-        <button type="button" class="item-menu" @click="irPara('/')">Bater Ponto</button>
+        <button v-if="ehGestao" type="button" class="item-menu" @click="irPara('/gestor')">Painel</button>
+        <button v-if="!ehGestao" type="button" class="item-menu" @click="irPara('/')">Bater Ponto</button>
         <button type="button" class="item-menu" @click="irPara('/ponto/indicadores')">Indicadores</button>
         <button type="button" class="item-menu" @click="irPara('/ponto/espelho')">Cartão Ponto</button>
         <button type="button" class="item-menu" @click="irPara('/ponto/solicitacoes')">Solicitações</button>
