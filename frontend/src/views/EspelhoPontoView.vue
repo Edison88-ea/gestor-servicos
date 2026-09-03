@@ -47,9 +47,10 @@ function formatarData(isoData) {
 
 function statusDia(dia) {
   if (dia.futuro) return 'futuro'
-  if (dia.folga) return 'ok'
+  if (dia.folga && dia.registros.length === 0) return 'ok'
   if (dia.registros.length === 0) return 'alerta'
-  return dia.saldo_minutos >= 0 ? 'ok' : 'alerta'
+  if (dia.falta_minutos > 0 || dia.em_aberto) return 'alerta'
+  return 'ok'
 }
 
 function paresDeHorarios(registros) {
@@ -137,9 +138,33 @@ watch([mesReferencia, funcionarioSel], carregarMes, { immediate: true })
     <p v-else-if="erro" style="color: var(--danger)">{{ erro }}</p>
 
     <template v-else-if="espelho">
-      <div class="card" style="margin-bottom: 16px; text-align: center">
-        <div style="color: var(--text-muted); font-size: 14px">Total no mês</div>
-        <div style="font-size: 28px; font-weight: 700">{{ formatarMinutos(espelho.total_minutos) }}</div>
+      <div class="card" style="margin-bottom: 16px">
+        <div style="text-align: center">
+          <div style="color: var(--text-muted); font-size: 14px">Horas trabalhadas no mês</div>
+          <div style="font-size: 28px; font-weight: 700">{{ formatarMinutos(espelho.total_minutos) }}</div>
+        </div>
+        <div style="display: flex; justify-content: space-around; margin-top: 12px; text-align: center">
+          <div>
+            <div style="color: var(--text-muted); font-size: 12px">Extras</div>
+            <strong style="color: #0ca30c">{{ formatarMinutos(espelho.total_extra_minutos) }}</strong>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 12px">Faltas</div>
+            <strong style="color: #d03b3b">{{ formatarMinutos(espelho.total_falta_minutos) }}</strong>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 12px">Saldo</div>
+            <strong :style="{ color: espelho.saldo_minutos >= 0 ? '#0ca30c' : '#d03b3b' }">
+              {{ espelho.saldo_minutos > 0 ? '+' : '' }}{{ formatarMinutos(espelho.saldo_minutos) }}
+            </strong>
+          </div>
+        </div>
+        <div
+          v-if="espelho.total_noturno_minutos"
+          style="text-align: center; margin-top: 8px; font-size: 12px; color: var(--text-muted)"
+        >
+          Noturno (22h–5h): {{ formatarMinutos(espelho.total_noturno_minutos) }}
+        </div>
       </div>
 
       <ul class="lista-dias" style="list-style: none; padding: 0; gap: 8px">
@@ -152,6 +177,14 @@ watch([mesReferencia, funcionarioSel], carregarMes, { immediate: true })
             <span v-if="!dia.futuro" :style="{ color: dia.saldo_minutos >= 0 ? '#0ca30c' : '#d03b3b', fontWeight: 600 }">
               {{ dia.saldo_minutos > 0 ? '+' : '' }}{{ formatarMinutos(dia.saldo_minutos) }}
             </span>
+          </div>
+          <div
+            v-if="!dia.futuro && (dia.extra_minutos || dia.falta_minutos || dia.noturno_minutos)"
+            style="display: flex; gap: 12px; margin-top: 4px; font-size: 13px; padding-left: 26px"
+          >
+            <span v-if="dia.extra_minutos" style="color: #0ca30c">Extra {{ formatarMinutos(dia.extra_minutos) }}</span>
+            <span v-if="dia.falta_minutos" style="color: #d03b3b">Falta {{ formatarMinutos(dia.falta_minutos) }}</span>
+            <span v-if="dia.noturno_minutos" style="color: var(--text-muted)">Not. {{ formatarMinutos(dia.noturno_minutos) }}</span>
           </div>
           <div v-if="modo === 'completo'" style="margin-top: 6px; font-size: 13px; color: var(--text-muted)">
             <span v-if="dia.futuro"></span>

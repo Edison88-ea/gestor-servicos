@@ -49,6 +49,17 @@ _MSG_SEQUENCIA = {
 # ajuste).
 GUARDA_JORNADA = timedelta(hours=24)
 
+# Saída seguida de Entrada em menos disso = pausa dentro da mesma jornada (turno
+# partido, ou Saída/Entrada batidos no lugar do intervalo). Evita fatiar entre
+# dois dias um turno noturno em que o funcionário sai e volta perto do fim.
+PAUSA_MAXIMA = timedelta(hours=4)
+
+# Horário noturno legal (CLT art. 73): 22h às 5h. O app só *segmenta* as horas
+# (quanto do trabalho caiu nessa faixa) — o adicional de 20% e a hora reduzida
+# de 52min30s são aplicados na folha, não aqui.
+HORA_NOTURNA_INICIO = _time(22, 0)
+HORA_NOTURNA_FIM = _time(5, 0)
+
 
 def validar_sequencia_ponto(funcionario, tipo, registrado_em):
     """Levanta ValidationError se a batida não faz sentido na sequência ou se é
@@ -121,6 +132,20 @@ def _agrupar_jornadas(registros):
             fechar(atual, abandonada=True)
             atual = None
 
+        # Entrada logo após a Saída da jornada anterior: retoma aquela jornada em
+        # vez de abrir uma nova (senão um turno que virou a noite fica partido
+        # entre dois dias no cartão).
+        if (
+            atual is None
+            and r.tipo == _T.ENTRADA
+            and jornadas
+            and jornadas[-1].get("fechada_em")
+            and not jornadas[-1].get("abandonada")
+            and r.registrado_em - jornadas[-1]["fechada_em"] <= PAUSA_MAXIMA
+        ):
+            atual = jornadas.pop()
+            atual["fechada_em"] = None
+
         if atual is None:
             atual = {"inicio": r.registrado_em, "registros": [r], "fechada_em": None}
             if r.tipo != _T.ENTRADA:
@@ -141,22 +166,105 @@ def _agrupar_jornadas(registros):
     return jornadas
 
 
-def _minutos_trabalhados(jornada):
-    total = timedelta()
+def _intervalos_trabalhados(jornada):
+    """Pares Entrada -> Saída de uma jornada, como intervalos (datetime, datetime).
+    Batidas sem par (Saída órfã, jornada ainda em aberto) são ignoradas."""
+    intervalos = []
     inicio_par = None
     for r in jornada["registros"]:
         if r.tipo in TIPOS_ENTRADA:
             inicio_par = r.registrado_em
         elif r.tipo in TIPOS_SAIDA and inicio_par:
-            total += r.registrado_em - inicio_par
+            if r.registrado_em > inicio_par:
+                intervalos.append((inicio_par, r.registrado_em))
             inicio_par = None
+    return intervalos
+
+
+def _normalizar_intervalos(intervalos):
+    """Ordena e funde intervalos que se sobrepõem ou encostam (batidas
+    duplicadas da fila offline podem gerar sobreposição)."""
+    ordenados = sorted(i for i in intervalos if i[0] < i[1])
+    if not ordenados:
+        return []
+    fundidos = [ordenados[0]]
+    for ini, fim in ordenados[1:]:
+        u_ini, u_fim = fundidos[-1]
+        if ini <= u_fim:
+            fundidos[-1] = (u_ini, max(u_fim, fim))
+        else:
+            fundidos.append((ini, fim))
+    return fundidos
+
+
+def _somar_minutos(intervalos):
+    total = sum((fim - ini for ini, fim in _normalizar_intervalos(intervalos)), timedelta())
+    return int(total.total_seconds() // 60)
+
+
+def _intersecao(intervalos_a, intervalos_b):
+    """Interseção de dois conjuntos de intervalos, como lista de intervalos."""
+    a = _normalizar_intervalos(intervalos_a)
+    b = _normalizar_intervalos(intervalos_b)
+    resultado, i, j = [], 0, 0
+    while i < len(a) and j < len(b):
+        ini = max(a[i][0], b[j][0])
+        fim = min(a[i][1], b[j][1])
+        if ini < fim:
+            resultado.append((ini, fim))
+        if a[i][1] <= b[j][1]:
+            i += 1
+        else:
+            j += 1
+    return resultado
+
+
+def _minutos_trabalhados(jornada):
+    return _somar_minutos(_intervalos_trabalhados(jornada))
+
+
+def _janela_do_dia(funcionario, dia):
+    """Intervalos (datetime) da jornada esperada no dia local `dia`. Um período
+    cujo fim <= início cruza a meia-noite e termina no dia seguinte."""
+    janela = []
+    periodos = (
+        (funcionario.periodo1_inicio, funcionario.periodo1_fim),
+        (funcionario.periodo2_inicio, funcionario.periodo2_fim),
+    )
+    for inicio, fim in periodos:
+        if not inicio or not fim:
+            continue
+        ini_dt = timezone.make_aware(datetime.combine(dia, inicio))
+        fim_dia = dia if fim > inicio else dia + timedelta(days=1)
+        janela.append((ini_dt, timezone.make_aware(datetime.combine(fim_dia, fim))))
+    return janela
+
+
+def _minutos_noturnos(intervalos):
+    """Minutos dos intervalos que caem na faixa noturna (22h-5h) de qualquer dia."""
+    total = timedelta()
+    for ini, fim in _normalizar_intervalos(intervalos):
+        d = ini.date() - timedelta(days=1)
+        while d <= fim.date():
+            faixa_ini = timezone.make_aware(datetime.combine(d, HORA_NOTURNA_INICIO))
+            faixa_fim = timezone.make_aware(
+                datetime.combine(d + timedelta(days=1), HORA_NOTURNA_FIM)
+            )
+            s, e = max(ini, faixa_ini), min(fim, faixa_fim)
+            if s < e:
+                total += e - s
+            d += timedelta(days=1)
     return int(total.total_seconds() // 60)
 
 
 def _calcular_dias(funcionario, data_inicio, data_fim, request):
-    """Para cada dia do período: registros, minutos trabalhados, esperados e
-    saldo. Trabalha por jornada — um turno que vira a noite conta inteiro no
-    dia em que começou."""
+    """Para cada dia do período: registros, minutos trabalhados/esperados, saldo
+    e a apuração posicional (normal/extra/falta/noturno).
+
+    Trabalha por jornada — um turno que vira a noite conta inteiro no dia em que
+    começou. A apuração posicional cruza o que foi trabalhado com a *janela* do
+    horário do funcionário: dentro da janela = normal, fora = extra, janela
+    descoberta = falta. `saldo` continua sendo trabalhado - carga (= extra - falta)."""
     d_ini = date.fromisoformat(data_inicio)
     d_fim = date.fromisoformat(data_fim)
 
@@ -170,12 +278,12 @@ def _calcular_dias(funcionario, data_inicio, data_fim, request):
         ).order_by("registrado_em")
     )
 
-    trabalhado_por_dia = defaultdict(int)
+    intervalos_por_dia = defaultdict(list)
     regs_por_dia = defaultdict(list)
     dias_em_aberto = set()
     for jornada in _agrupar_jornadas(registros):
         dia_j = timezone.localtime(jornada["inicio"]).date()
-        trabalhado_por_dia[dia_j] += _minutos_trabalhados(jornada)
+        intervalos_por_dia[dia_j].extend(_intervalos_trabalhados(jornada))
         regs_por_dia[dia_j].extend(jornada["registros"])
         if jornada["fechada_em"] is None and not jornada.get("abandonada") and not jornada.get("inconsistente"):
             dias_em_aberto.add(dia_j)
@@ -185,10 +293,21 @@ def _calcular_dias(funcionario, data_inicio, data_fim, request):
         regs = sorted(regs_por_dia.get(dia, []), key=lambda r: r.registrado_em)
         folga = dia.weekday() >= 5  # sábado/domingo
         futuro = dia > timezone.localdate()
-        total_minutos = trabalhado_por_dia.get(dia, 0)
-        # dias futuros ainda não aconteceram: não contam como falta nem extra
-        esperado_minutos = 0 if (folga or futuro) else funcionario.carga_horaria_diaria_minutos
-        saldo_minutos = total_minutos - esperado_minutos
+        intervalos = intervalos_por_dia.get(dia, [])
+
+        # dia futuro ainda não aconteceu; folga não tem janela esperada
+        janela = [] if (folga or futuro) else _janela_do_dia(funcionario, dia)
+        carga = _somar_minutos(janela)
+
+        total_minutos = _somar_minutos(intervalos)
+        normal_minutos = _somar_minutos(_intersecao(intervalos, janela))
+        extra_minutos = total_minutos - normal_minutos
+        falta_minutos = max(carga - normal_minutos, 0)
+        noturno_minutos = _minutos_noturnos(intervalos)
+        extra_noturno_minutos = noturno_minutos - _minutos_noturnos(
+            _intersecao(intervalos, janela)
+        )
+        saldo_minutos = total_minutos - carga
 
         dias.append(
             {
@@ -197,8 +316,13 @@ def _calcular_dias(funcionario, data_inicio, data_fim, request):
                 "futuro": futuro,
                 "registros": RegistroPontoSerializer(regs, many=True, context={"request": request}).data,
                 "total_minutos": total_minutos,
-                "esperado_minutos": esperado_minutos,
+                "esperado_minutos": carga,
                 "saldo_minutos": saldo_minutos,
+                "normal_minutos": normal_minutos,
+                "extra_minutos": extra_minutos,
+                "falta_minutos": falta_minutos,
+                "noturno_minutos": noturno_minutos,
+                "extra_noturno_minutos": extra_noturno_minutos,
                 "em_aberto": dia in dias_em_aberto,
             }
         )
@@ -269,6 +393,9 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
         dias = _calcular_dias(funcionario, data_inicio, data_fim, request)
 
         total_minutos = sum(d["total_minutos"] for d in dias)
+        total_extra = sum(d["extra_minutos"] for d in dias)
+        total_falta = sum(d["falta_minutos"] for d in dias)
+        total_noturno = sum(d["noturno_minutos"] for d in dias)
         for d in dias:
             d["data"] = d["data"].isoformat()
 
@@ -278,6 +405,10 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
                 "periodo": {"inicio": data_inicio, "fim": data_fim},
                 "dias": dias,
                 "total_minutos": total_minutos,
+                "total_extra_minutos": total_extra,
+                "total_falta_minutos": total_falta,
+                "total_noturno_minutos": total_noturno,
+                "saldo_minutos": total_extra - total_falta,
             }
         )
 
@@ -304,13 +435,21 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
                 rotulo = f"Sem{semana_iso}"
 
             if chave not in grupos:
-                grupos[chave] = {"chave": chave, "rotulo": rotulo, "horas_extras_minutos": 0, "horas_faltantes_minutos": 0}
+                grupos[chave] = {
+                    "chave": chave,
+                    "rotulo": rotulo,
+                    "horas_extras_minutos": 0,
+                    "horas_faltantes_minutos": 0,
+                    "horas_noturnas_minutos": 0,
+                }
                 ordem.append(chave)
 
-            if d["saldo_minutos"] > 0:
-                grupos[chave]["horas_extras_minutos"] += d["saldo_minutos"]
-            elif d["saldo_minutos"] < 0:
-                grupos[chave]["horas_faltantes_minutos"] += -d["saldo_minutos"]
+            # apuração posicional: extra = trabalho fora da janela do horário;
+            # faltante = janela do horário não coberta (independentes, não é o
+            # saldo líquido — uma noite inteira pode ter as duas coisas)
+            grupos[chave]["horas_extras_minutos"] += d["extra_minutos"]
+            grupos[chave]["horas_faltantes_minutos"] += d["falta_minutos"]
+            grupos[chave]["horas_noturnas_minutos"] += d["noturno_minutos"]
 
         grupos_ordenados = [grupos[chave] for chave in ordem]
 
@@ -322,6 +461,7 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
                 "grupos": grupos_ordenados,
                 "total_horas_extras_minutos": sum(g["horas_extras_minutos"] for g in grupos_ordenados),
                 "total_horas_faltantes_minutos": sum(g["horas_faltantes_minutos"] for g in grupos_ordenados),
+                "total_horas_noturnas_minutos": sum(g["horas_noturnas_minutos"] for g in grupos_ordenados),
             }
         )
 

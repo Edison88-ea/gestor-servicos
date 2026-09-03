@@ -43,7 +43,7 @@ App em `http://localhost:5173` (proxy automático de `/api` e `/media` para o ba
 - [x] Login (JWT), papéis (técnico/gestor/RH/admin)
 - [x] Ordens de Serviço: criar (técnico ou gestor), buscar/cadastrar cliente na hora, "estou no local" (geolocalização de abertura), iniciar/concluir, fotos, assinatura do cliente
 - [x] Ponto: bater ponto com mapa ao vivo + endereço, fila offline, jornada de trabalho por funcionário (até 2 períodos, configurada pelo RH no admin)
-- [x] Cartão Ponto (mês a dia, saldo extra/faltante) e Indicadores (gráficos de horas extras/faltantes)
+- [x] Cartão Ponto (mês a dia) e Indicadores com apuração posicional: trabalho fora da janela do horário = hora extra, janela descoberta = falta, faixa 22h–5h = noturno (só segmenta as horas; adicional de 20% e hora reduzida ficam a cargo da folha, como no Secullum)
 - [x] Solicitações de ajuste de ponto / justificativa de ausência, com aprovação do gestor
 - [x] Notificações in-app (sino no topo) quando uma OS é atribuída ou uma solicitação é analisada
 - [x] Painel do gestor: status de ponto dos técnicos hoje, OS em aberto, solicitações pendentes

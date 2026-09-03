@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time
 
 from django.test import TestCase
 from django.utils import timezone
@@ -121,3 +121,82 @@ class EncarregadoPontoTests(TestCase):
         self.api.force_authenticate(self.encarregado)
         resp = self.api.get("/api/registros-ponto/")
         self.assertEqual(resp.data["count"], 0)
+
+
+class ApuracaoPosicionalTests(TestCase):
+    """Extra = trabalho fora da janela do horário; falta = janela descoberta.
+    O saldo continua sendo trabalhado - carga (= extra - falta)."""
+
+    def setUp(self):
+        # horário 09:00-12:00 + 13:30-19:00 = 8h30 (o caso do print do Secullum)
+        self.func = Usuario.objects.create_user(username="noturno", password="x")
+        self.func.periodo1_inicio = time(9, 0)
+        self.func.periodo1_fim = time(12, 0)
+        self.func.periodo2_inicio = time(13, 30)
+        self.func.periodo2_fim = time(19, 0)
+        self.func.save()
+
+    def _reg(self, tipo, quando):
+        RegistroPonto.objects.create(funcionario=self.func, tipo=tipo, registrado_em=quando)
+
+    def _dia(self, data_iso):
+        return _calcular_dias(self.func, data_iso, data_iso, None)[0]
+
+    def test_turno_noturno_reproduz_secullum(self):
+        # Print "Detalhes" do Secullum (31/08): Entrada 22:04, Saída 07:06,
+        # Entrada 07:30, Saída 07:40 -> Extras 09:12, Faltas 08:30, Not 06:56,
+        # Saldo +00:42
+        self._reg(_T.ENTRADA, _m(2026, 8, 31, 22, 4))
+        self._reg(_T.SAIDA, _m(2026, 9, 1, 7, 6))
+        self._reg(_T.ENTRADA, _m(2026, 9, 1, 7, 30))
+        self._reg(_T.SAIDA, _m(2026, 9, 1, 7, 40))
+
+        d = self._dia("2026-08-31")
+        self.assertEqual(d["normal_minutos"], 0)
+        self.assertEqual(d["extra_minutos"], 9 * 60 + 12)
+        self.assertEqual(d["falta_minutos"], 8 * 60 + 30)
+        self.assertEqual(d["noturno_minutos"], 6 * 60 + 56)
+        self.assertEqual(d["extra_noturno_minutos"], 6 * 60 + 56)
+        self.assertEqual(d["saldo_minutos"], 42)
+        self.assertEqual(d["saldo_minutos"], d["extra_minutos"] - d["falta_minutos"])
+
+    def test_pausa_curta_apos_meia_noite_fica_no_dia_que_comecou(self):
+        # a Entrada 07:30 (24 min depois da Saída 07:06) retoma a mesma jornada
+        self._reg(_T.ENTRADA, _m(2026, 8, 31, 22, 4))
+        self._reg(_T.SAIDA, _m(2026, 9, 1, 7, 6))
+        self._reg(_T.ENTRADA, _m(2026, 9, 1, 7, 30))
+        self._reg(_T.SAIDA, _m(2026, 9, 1, 7, 40))
+
+        self.assertEqual(self._dia("2026-09-01")["total_minutos"], 0)
+        self.assertEqual(self._dia("2026-08-31")["total_minutos"], 9 * 60 + 12)
+
+    def test_diurno_no_horario_quase_sem_extra_nem_falta(self):
+        self._reg(_T.ENTRADA, _m(2026, 9, 2, 9, 3))
+        self._reg(_T.SAIDA_INTERVALO, _m(2026, 9, 2, 12, 0))
+        self._reg(_T.VOLTA_INTERVALO, _m(2026, 9, 2, 13, 28))
+        self._reg(_T.SAIDA, _m(2026, 9, 2, 19, 5))
+
+        d = self._dia("2026-09-02")
+        self.assertEqual(d["normal_minutos"], 507)          # 09:03-12:00 + 13:30-19:00
+        self.assertEqual(d["extra_minutos"], 7)             # 13:28-13:30 + 19:00-19:05
+        self.assertEqual(d["falta_minutos"], 3)             # 09:00-09:03
+        self.assertEqual(d["noturno_minutos"], 0)
+        self.assertEqual(d["saldo_minutos"], 4)
+
+    def test_fim_de_semana_tudo_extra_sem_falta(self):
+        # sábado 05/09: sem janela esperada
+        self._reg(_T.ENTRADA, _m(2026, 9, 5, 22, 0))
+        self._reg(_T.SAIDA, _m(2026, 9, 6, 6, 0))
+
+        d = self._dia("2026-09-05")
+        self.assertTrue(d["folga"])
+        self.assertEqual(d["extra_minutos"], 8 * 60)
+        self.assertEqual(d["falta_minutos"], 0)
+        self.assertEqual(d["noturno_minutos"], 7 * 60)      # 22:00-05:00
+        self.assertEqual(d["saldo_minutos"], 8 * 60)
+
+    def test_dia_sem_batida_e_falta_cheia(self):
+        d = self._dia("2026-09-02")
+        self.assertEqual(d["extra_minutos"], 0)
+        self.assertEqual(d["falta_minutos"], 8 * 60 + 30)
+        self.assertEqual(d["saldo_minutos"], -(8 * 60 + 30))

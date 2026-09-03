@@ -63,10 +63,8 @@ def _saldo_horas_mes(funcionarios, inicio_mes, ate):
     if ate >= inicio_mes:
         for func in funcionarios:
             for dia in _calcular_dias(func, inicio_mes.isoformat(), ate.isoformat(), None):
-                if dia["saldo_minutos"] > 0:
-                    extras += dia["saldo_minutos"]
-                elif dia["saldo_minutos"] < 0:
-                    faltantes += -dia["saldo_minutos"]
+                extras += dia["extra_minutos"]
+                faltantes += dia["falta_minutos"]
     return extras, faltantes
 
 
