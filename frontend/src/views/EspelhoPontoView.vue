@@ -26,7 +26,11 @@ const nomeFuncionario = ref('')
 // Tela: dia mais recente no topo (uso diário no celular). A lista é invertida
 // de fato — o DOM segue essa ordem, então leitor de tela e foco acompanham.
 // Na impressão o CSS reinverte para a ordem cronológica (padrão de cartão).
-const diasExibicao = computed(() => (espelho.value ? [...espelho.value.dias].reverse() : []))
+// Dias futuros (fim do mês corrente) não entram: cartão de ponto só mostra o
+// que já aconteceu.
+const diasExibicao = computed(() =>
+  espelho.value ? espelho.value.dias.filter((d) => !d.futuro).reverse() : [],
+)
 
 const nomeNoCabecalho = computed(
   () =>
