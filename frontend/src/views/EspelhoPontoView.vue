@@ -23,6 +23,11 @@ const modo = ref('completo') // 'resumido' | 'completo'
 const funcionarioSel = ref('') // '' = o próprio usuário (gestão pode ver outros)
 const nomeFuncionario = ref('')
 
+// Tela: dia mais recente no topo (uso diário no celular). A lista é invertida
+// de fato — o DOM segue essa ordem, então leitor de tela e foco acompanham.
+// Na impressão o CSS reinverte para a ordem cronológica (padrão de cartão).
+const diasExibicao = computed(() => (espelho.value ? [...espelho.value.dias].reverse() : []))
+
 const nomeNoCabecalho = computed(
   () =>
     nomeFuncionario.value ||
@@ -168,7 +173,7 @@ watch([mesReferencia, funcionarioSel], carregarMes, { immediate: true })
       </div>
 
       <ul class="lista-dias" style="list-style: none; padding: 0; gap: 8px">
-        <li v-for="dia in espelho.dias" :key="dia.data" class="card">
+        <li v-for="dia in diasExibicao" :key="dia.data" class="card">
           <div style="display: flex; align-items: center; gap: 8px">
             <span v-if="statusDia(dia) === 'ok'" style="color: #0ca30c; font-size: 18px">✓</span>
             <span v-else-if="statusDia(dia) === 'alerta'" style="color: #d03b3b; font-size: 18px">!</span>
@@ -202,16 +207,15 @@ watch([mesReferencia, funcionarioSel], carregarMes, { immediate: true })
 </template>
 
 <style scoped>
-/* Na tela, dias mais recentes no topo (uso diário no celular). Na impressão,
-   volta à ordem cronológica — padrão de cartão de ponto. O DOM segue
-   cronológico; só a exibição é invertida. */
+/* O DOM já vem com o dia mais recente primeiro (ver `diasExibicao`). Na
+   impressão, um cartão de ponto é cronológico — só aí reinvertemos. */
 .lista-dias {
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
 }
 @media print {
   .lista-dias {
-    flex-direction: column;
+    flex-direction: column-reverse;
   }
 }
 </style>
