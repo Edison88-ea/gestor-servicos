@@ -44,14 +44,19 @@ _MSG_SEQUENCIA = {
 
 # Uma jornada (Entrada -> ... -> Saída) pode cruzar a meia-noite. Mas se ficar
 # aberta por mais de 24h, é quase certeza que o funcionário esqueceu de bater a
-# Saída — a partir daí a próxima batida válida volta a ser Entrada, e o cálculo
-# do cartão ignora as horas da jornada abandonada (o acerto vira Solicitação de
-# ajuste).
+# Saída — a partir daí a próxima batida válida volta a ser Entrada. O cartão
+# conta os pares Entrada->Saída que ficaram completos; o rabo em aberto da
+# jornada abandonada não conta e o acerto vira Solicitação de ajuste.
 GUARDA_JORNADA = timedelta(hours=24)
 
-# Saída seguida de Entrada em menos disso = pausa dentro da mesma jornada (turno
-# partido, ou Saída/Entrada batidos no lugar do intervalo). Evita fatiar entre
-# dois dias um turno noturno em que o funcionário sai e volta perto do fim.
+# Fronteira entre "pausa" e "esqueceu de bater". Usada nos dois sentidos:
+#  - Saída seguida de Entrada em MENOS que isso  -> pausa na mesma jornada
+#    (turno partido, ou Saída/Entrada no lugar do intervalo);
+#  - Entrada nova com a jornada ainda ABERTA e MAIS que isso desde a última
+#    batida -> a Saída anterior foi esquecida; fecha a jornada órfã e recomeça.
+# Sem isso, um turno noturno em que o funcionário sai/volta perto do fim ficava
+# fatiado entre dois dias, e quem esquecia a Saída não conseguia bater a
+# Entrada no dia seguinte.
 PAUSA_MAXIMA = timedelta(hours=4)
 
 # Horário noturno legal (CLT art. 73): 22h às 5h. O app só *segmenta* as horas
@@ -88,10 +93,20 @@ def validar_sequencia_ponto(funcionario, tipo, registrado_em):
     # já salvas não trava um registro legítimo.
     nova = (registrado_em, tipo)
     sequencia = sorted([(r.registrado_em, r.tipo) for r in recentes] + [nova])
-    anterior, inicio_jornada = None, None
+    anterior, inicio_jornada, ultimo = None, None, None
     for quando, t in sequencia:
         # jornada aberta há 24h+ = Saída esquecida: a máquina recomeça
         if inicio_jornada is not None and quando - inicio_jornada >= GUARDA_JORNADA:
+            anterior, inicio_jornada = None, None
+        # Entrada nova, jornada ainda aberta e faz tempo desde a última batida:
+        # a Saída anterior foi esquecida — deixa recomeçar (senão o funcionário
+        # não consegue bater o ponto no dia seguinte).
+        if (
+            t == _T.ENTRADA
+            and inicio_jornada is not None
+            and ultimo is not None
+            and quando - ultimo >= PAUSA_MAXIMA
+        ):
             anterior, inicio_jornada = None, None
         if (quando, t) == nova and t not in TRANSICOES_PONTO.get(anterior, set()):
             msg = _MSG_SEQUENCIA.get(
@@ -103,6 +118,7 @@ def validar_sequencia_ponto(funcionario, tipo, registrado_em):
         elif t == _T.SAIDA:
             inicio_jornada = None
         anterior = t
+        ultimo = quando
 
 
 def _intervalo_datas(data_inicio, data_fim):
@@ -129,6 +145,18 @@ def _agrupar_jornadas(registros):
 
     for r in registros:
         if atual is not None and r.registrado_em - atual["inicio"] >= GUARDA_JORNADA:
+            fechar(atual, abandonada=True)
+            atual = None
+
+        # Entrada nova enquanto a jornada segue aberta e faz tempo que ninguém
+        # bate ponto: a Saída anterior foi esquecida. Fecha a jornada órfã e
+        # começa outra — senão as horas do novo turno entram no dia da jornada
+        # esquecida.
+        if (
+            atual is not None
+            and r.tipo == _T.ENTRADA
+            and r.registrado_em - atual["registros"][-1].registrado_em >= PAUSA_MAXIMA
+        ):
             fechar(atual, abandonada=True)
             atual = None
 

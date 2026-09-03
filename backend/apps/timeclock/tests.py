@@ -40,6 +40,13 @@ class ValidarSequenciaPontoTests(TestCase):
         self._reg(_T.ENTRADA, _m(2026, 8, 24, 8, 0))
         validar_sequencia_ponto(self.func, _T.ENTRADA, _m(2026, 8, 25, 8, 0))
 
+    def test_entrada_de_manha_apos_esquecer_saida_na_vespera(self):
+        # última batida ontem 12h (esqueceu Volta e Saída); hoje 07h ainda é
+        # < 24h da Entrada de ontem, mas faz 19h desde a última batida -> permite
+        self._reg(_T.ENTRADA, _m(2026, 8, 24, 8, 0))
+        self._reg(_T.SAIDA_INTERVALO, _m(2026, 8, 24, 12, 0))
+        validar_sequencia_ponto(self.func, _T.ENTRADA, _m(2026, 8, 25, 7, 0))
+
     def test_batida_fora_de_sequencia_ainda_recusada(self):
         self._reg(_T.ENTRADA, _m(2026, 8, 24, 8, 0))
         with self.assertRaises(ValidationError):
@@ -89,6 +96,25 @@ class JornadaCalculoTests(TestCase):
         self.assertEqual(len(jornadas), 2)
         self.assertTrue(jornadas[0]["abandonada"])
         self.assertEqual(_calcular_dias(self.func, "2026-08-24", "2026-08-24", None)[0]["total_minutos"], 0)
+
+    def test_esquecer_saida_nao_faz_o_dia_seguinte_roubar_as_horas(self):
+        # segunda: E 08h, SI 12h, VI 13h e esqueceu a Saída.
+        self._reg(_T.ENTRADA, _m(2026, 8, 24, 8, 0))
+        self._reg(_T.SAIDA_INTERVALO, _m(2026, 8, 24, 12, 0))
+        self._reg(_T.VOLTA_INTERVALO, _m(2026, 8, 24, 13, 0))
+        # terça (< 24h da Entrada de segunda): jornada normal de 8h
+        self._reg(_T.ENTRADA, _m(2026, 8, 25, 7, 30))
+        self._reg(_T.SAIDA_INTERVALO, _m(2026, 8, 25, 12, 0))
+        self._reg(_T.VOLTA_INTERVALO, _m(2026, 8, 25, 13, 0))
+        self._reg(_T.SAIDA, _m(2026, 8, 25, 16, 30))
+
+        jornadas = _agrupar_jornadas(list(self.func.registros_ponto.order_by("registrado_em")))
+        self.assertEqual(len(jornadas), 2)
+        self.assertTrue(jornadas[0]["abandonada"])
+
+        por_data = {str(d["data"]): d for d in _calcular_dias(self.func, "2026-08-24", "2026-08-25", None)}
+        self.assertEqual(por_data["2026-08-24"]["total_minutos"], 4 * 60)   # só a manhã que bateu
+        self.assertEqual(por_data["2026-08-25"]["total_minutos"], 8 * 60)   # terça inteira fica na terça
 
 
 class EncarregadoPontoTests(TestCase):
