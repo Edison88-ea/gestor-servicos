@@ -84,8 +84,11 @@ def validar_sequencia_ponto(funcionario, tipo, registrado_em):
 
     for r in recentes:
         if r.tipo == tipo and abs((r.registrado_em - registrado_em).total_seconds()) < 90:
+            # Reenvio (fila offline, Background Sync do service worker, toque
+            # duplo): a batida já está salva. Marca `duplicado` para o cliente
+            # tratar como sucesso, não como recusa.
             raise ValidationError(
-                {"tipo": f"'{_T(tipo).label}' já foi registrado agora há pouco."}
+                {"tipo": f"'{_T(tipo).label}' já foi registrado agora há pouco.", "duplicado": True}
             )
 
     # Encaixa a nova batida no lugar cronológico e caminha a máquina de estados.

@@ -36,8 +36,23 @@ export default defineConfig({
           /^\/healthz/,
         ],
         // Leitura offline. As gravações (criar/iniciar/concluir OS, ponto)
-        // passam pela fila do próprio app, não pelo service worker.
+        // passam pela fila do próprio app, não pelo service worker — EXCETO
+        // a batida de ponto, que também ganha Background Sync abaixo: o
+        // service worker tenta reenviar sozinho quando a rede volta, mesmo
+        // com o app fechado (só Android/Chrome — iOS não suporta essa API,
+        // e continua dependendo do app reabrir, como hoje). É só um reforço:
+        // a fila do app (`stores/ponto.js`) continua sendo a garantia real de
+        // entrega, e o backend já trata reenvio da mesma batida como
+        // duplicata (não cria registro repetido).
         runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname === '/api/registros-ponto/',
+            method: 'POST',
+            handler: 'NetworkOnly',
+            options: {
+              backgroundSync: { name: 'ponto-queue' },
+            },
+          },
           {
             // GET da API: rede primeiro, cai para o cache quando sem sinal.
             urlPattern: ({ url, request }) =>

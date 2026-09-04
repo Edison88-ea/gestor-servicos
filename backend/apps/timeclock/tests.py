@@ -54,8 +54,12 @@ class ValidarSequenciaPontoTests(TestCase):
 
     def test_duplicata_recusada(self):
         self._reg(_T.ENTRADA, _m(2026, 8, 24, 8, 0))
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ValidationError) as ctx:
             validar_sequencia_ponto(self.func, _T.ENTRADA, _m(2026, 8, 24, 8, 0))
+        # A fila offline e o Background Sync do service worker podem reenviar
+        # uma batida já salva — o cliente usa essa marca para tratar como
+        # sucesso silencioso, não como recusa de verdade.
+        self.assertTrue(ctx.exception.detail.get("duplicado"))
 
 
 class JornadaCalculoTests(TestCase):

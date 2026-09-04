@@ -142,10 +142,17 @@ export const usePontoStore = defineStore('ponto', {
             // seguintes, tenta tudo de novo na próxima. NUNCA descarta aqui.
             restantes.push(registro)
             servidorIndisponivel = true
+          } else if (error.response?.data?.duplicado) {
+            // Já chegou ao servidor por outro caminho (Background Sync do
+            // service worker, uma sincronização anterior que caiu antes de
+            // atualizar a fila local). Não é recusa — só descarta.
           } else {
             // 4xx: recusa real. Não some calado — vai para "rejeitados".
+            // `tipo` vem como string (validar_sequencia_ponto) ou lista (erro
+            // de campo do serializer) dependendo de quem recusou.
+            const erroTipo = error.response?.data?.tipo
             const motivo =
-              error.response?.data?.tipo?.[0] ||
+              (Array.isArray(erroTipo) ? erroTipo[0] : erroTipo) ||
               error.response?.data?.detail ||
               'Batida recusada pelo servidor.'
             this.rejeitados.push({
