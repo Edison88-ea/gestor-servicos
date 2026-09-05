@@ -142,6 +142,21 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
 AUTH_USER_MODEL = "accounts.Usuario"
 
 
+# Password hashing
+# Argon2id primeiro (login em ~50-150 ms na CPU do free, e mais resistente a
+# ataque com GPU que o PBKDF2). Os demais ficam só para validar hashes antigos
+# — o Django regrava em Argon2 no próximo login de cada usuário.
+
+PASSWORD_HASHERS = [
+    "config.hashers.Argon2Hasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
+    "django.contrib.auth.hashers.ScryptPasswordHasher",
+]
+
+
 # Password validation
 
 AUTH_PASSWORD_VALIDATORS = [
