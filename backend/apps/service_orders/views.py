@@ -25,6 +25,7 @@ from .relato_texto import montar_relato_texto
 from .serializers import (
     FotoOrdemServicoSerializer,
     MaterialCatalogoSerializer,
+    OrdemServicoListSerializer,
     OrdemServicoSerializer,
     ServicoCatalogoSerializer,
 )
@@ -34,10 +35,17 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
     serializer_class = OrdemServicoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_class(self):
+        if self.action == "list":
+            return OrdemServicoListSerializer
+        return OrdemServicoSerializer
+
     def get_queryset(self):
-        qs = OrdemServico.objects.select_related("cliente", "tecnico").prefetch_related(
-            "fotos", "pausas"
-        )
+        qs = OrdemServico.objects.select_related("cliente", "tecnico")
+        # fotos/pausas só são serializadas no detalhe; na lista seriam um
+        # prefetch caro e inútil.
+        if self.action != "list":
+            qs = qs.prefetch_related("fotos", "pausas")
         user = self.request.user
         params = self.request.query_params
         if user.papel == user.Papel.TECNICO:

@@ -85,3 +85,32 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
             "pausas",
         )
         read_only_fields = ("numero", "criado_por", "criado_em", "atualizado_em", "status")
+
+
+class OrdemServicoListSerializer(serializers.ModelSerializer):
+    """Versão enxuta para a listagem. As telas de lista (OrdensServico,
+    Painel do Gestor) só mostram número, cliente, técnico, status e datas —
+    não precisam de checklist, relato, assinatura, fotos, pausas nem do
+    cliente_detalhe. Isso corta o payload de ~1 KB para ~250 B por OS.
+    """
+
+    cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
+    tecnico_nome = serializers.CharField(source="tecnico.get_full_name", read_only=True)
+
+    class Meta:
+        model = OrdemServico
+        fields = (
+            "id",
+            "numero",
+            "cliente",
+            "cliente_nome",
+            "tecnico",
+            "tecnico_nome",
+            "tipo_servico",
+            "prioridade",
+            "status",
+            "data_agendada",
+            "data_inicio",
+            "data_conclusao",
+            "criado_em",
+        )

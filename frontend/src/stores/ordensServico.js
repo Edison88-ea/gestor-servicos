@@ -244,8 +244,13 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
     },
 
     _guardarNoCache() {
+      // A listagem devolve um payload enxuto (sem fotos, pausas, relato,
+      // cliente_detalhe...). Mescla com o que já houver no cache para não
+      // rebaixar uma OS cujo detalhe completo já foi carregado antes —
+      // offline a tela de detalhe/comprovante lê daqui.
+      const anterior = lerCache()
       const mapa = {}
-      for (const o of this.ordens) mapa[o.id] = o
+      for (const o of this.ordens) mapa[o.id] = { ...anterior[o.id], ...o }
       localStorage.setItem(KEY_CACHE, JSON.stringify(mapa))
     },
 
