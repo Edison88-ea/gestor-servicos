@@ -1,10 +1,15 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePontoStore } from '../stores/ponto'
 import GraficoBarras from '../components/GraficoBarras.vue'
 import SeletorFuncionario from '../components/SeletorFuncionario.vue'
 import { dataLocalISO, formatarMinutos } from '../utils/tempo'
+
+// 'pessoal' = os próprios indicadores, sem seletor (quem bate ponto).
+// 'equipe'  = indicadores de qualquer funcionário, com seletor (gestão).
+const props = defineProps({ escopo: { type: String, default: 'pessoal' } })
+const ehEquipe = computed(() => props.escopo === 'equipe')
 
 const router = useRouter()
 const ponto = usePontoStore()
@@ -25,7 +30,15 @@ const opcoesAgrupamento = [
   { valor: 'mes', rotulo: 'Mês' },
 ]
 
+// Na visão da equipe não há "meus indicadores" pra cair em cima — quem é
+// gestão pode nem bater ponto. Sem funcionário escolhido, não busca nada.
+const aguardandoFuncionario = computed(() => ehEquipe.value && !funcionarioSel.value)
+
 async function carregar() {
+  if (aguardandoFuncionario.value) {
+    indicadores.value = null
+    return
+  }
   carregando.value = true
   erro.value = ''
   try {
@@ -33,7 +46,7 @@ async function carregar() {
       dataInicio: dataInicio.value,
       dataFim: dataFim.value,
       agruparPor: agruparPor.value,
-      funcionario: funcionarioSel.value || undefined,
+      funcionario: ehEquipe.value ? funcionarioSel.value : undefined,
     })
   } catch {
     erro.value = 'Não foi possível carregar os indicadores.'
@@ -48,12 +61,17 @@ watch([dataInicio, dataFim, agruparPor, funcionarioSel], carregar, { immediate: 
 <template>
   <div class="top-bar">
     <button class="btn-secondary" style="border: none; background: none" @click="router.back()">← Voltar</button>
-    <strong>Indicadores</strong>
+    <strong>{{ ehEquipe ? 'Indicadores da Equipe' : 'Meus Indicadores' }}</strong>
   </div>
 
   <div class="content">
-    <SeletorFuncionario v-model="funcionarioSel" />
+    <SeletorFuncionario v-if="ehEquipe" v-model="funcionarioSel" rotulo-vazio="Selecione um funcionário" />
 
+    <p v-if="aguardandoFuncionario" class="card" style="color: var(--text-muted)">
+      Escolha um funcionário para ver os indicadores.
+    </p>
+
+    <template v-else>
     <div class="card" style="margin-bottom: 16px">
       <h2 style="margin: 0 0 10px">Filtrar</h2>
       <div style="display: flex; gap: 10px">
@@ -121,6 +139,7 @@ watch([dataInicio, dataFim, agruparPor, funcionarioSel], carregar, { immediate: 
           status="critical"
         />
       </div>
+    </template>
     </template>
   </div>
 </template>

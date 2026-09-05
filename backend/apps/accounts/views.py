@@ -22,6 +22,9 @@ class UsuarioViewSet(viewsets.ReadOnlyModelViewSet):
             # aceita lista separada por vírgula (ex.: "TECNICO,ENCARREGADO")
             papeis = [p.strip().upper() for p in papel.split(",") if p.strip()]
             qs = qs.filter(papel__in=papeis)
+        registra_ponto = self.request.query_params.get("registra_ponto")
+        if registra_ponto is not None:
+            qs = qs.filter(registra_ponto=registra_ponto in ("1", "true", "True"))
         return qs
 
     @action(detail=False, methods=["get"])

@@ -288,9 +288,13 @@ def _minutos_noturnos(intervalos):
     return int(total.total_seconds() // 60)
 
 
-def _calcular_dias(funcionario, data_inicio, data_fim, request):
+def _calcular_dias(funcionario, data_inicio, data_fim, request, resumo=False):
     """Para cada dia do período: registros, minutos trabalhados/esperados, saldo
     e a apuração posicional (normal/extra/falta/noturno).
+
+    Com ``resumo=True`` a lista serializada de registros de cada dia é omitida
+    (fica ``[]``) — para quem só soma os minutos (painel, indicadores) e não
+    precisa pagar a serialização por dia/funcionário.
 
     Trabalha por jornada — um turno que vira a noite conta inteiro no dia em que
     começou. A apuração posicional cruza o que foi trabalhado com a *janela* do
@@ -345,7 +349,13 @@ def _calcular_dias(funcionario, data_inicio, data_fim, request):
                 "data": dia,
                 "folga": folga,
                 "futuro": futuro,
-                "registros": RegistroPontoSerializer(regs, many=True, context={"request": request}).data,
+                "registros": (
+                    []
+                    if resumo
+                    else RegistroPontoSerializer(
+                        regs, many=True, context={"request": request}
+                    ).data
+                ),
                 "total_minutos": total_minutos,
                 "esperado_minutos": carga,
                 "saldo_minutos": saldo_minutos,
@@ -397,6 +407,10 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        if not self.request.user.registra_ponto:
+            raise ValidationError(
+                {"detail": "Este usuário não registra ponto."}
+            )
         validar_sequencia_ponto(
             self.request.user,
             serializer.validated_data["tipo"],
@@ -448,7 +462,7 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
         """Horas extras e horas faltantes agrupadas por dia, semana ou mês."""
         funcionario, data_inicio, data_fim = self._funcionario_e_periodo(request)
         agrupar_por = request.query_params.get("agrupar_por", "semana")
-        dias = _calcular_dias(funcionario, data_inicio, data_fim, request)
+        dias = _calcular_dias(funcionario, data_inicio, data_fim, request, resumo=True)
 
         grupos = {}
         ordem = []

@@ -43,6 +43,16 @@ class Usuario(AbstractUser):
         limit_choices_to={"papel": Papel.ENCARREGADO},
     )
 
+    # Nem todo mundo bate ponto, e isso não decorre do papel: a secretária é RH
+    # (cuida do ponto e das OS de todos) e ainda registra o próprio ponto; a
+    # dona da empresa acompanha a gestão e não bate ponto. Por isso um campo,
+    # e não uma regra em cima de `papel`.
+    registra_ponto = models.BooleanField(
+        "registra ponto",
+        default=True,
+        help_text="Desmarque para quem não bate ponto (sócios, diretoria).",
+    )
+
     # Jornada de trabalho (definida pelo RH, não pelo próprio funcionário):
     # até dois períodos por dia útil (segunda a sexta), ex. manhã e tarde.
     # Deixar um período em branco significa que ele não existe para essa jornada.

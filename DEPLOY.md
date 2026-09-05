@@ -44,6 +44,10 @@ git push -u origin main
    `DATABASE_URL` do projeto Neon `gestor-servicos`:
    Dashboard Neon → Connection Details → **Pooled connection**.
 
+   > A API reaproveita a conexão por 10 min (`CONN_MAX_AGE=600`). Por isso o
+   > `DATABASE_URL` **tem que** ser o endpoint *pooled* (host com `-pooler`).
+   > Para ajustar: env var `DB_CONN_MAX_AGE` (segundos; `0` desliga).
+
 4. **Apply**. O primeiro build leva ~3–5 min (instala Node+Python, builda o
    Vite, `collectstatic`, `migrate`, cria o superusuário).
 

@@ -27,17 +27,47 @@ import RelatorioObraView from '../views/RelatorioObraView.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView },
-  { path: '/', name: 'ponto', component: PontoView, meta: { auth: true } },
-  { path: '/ponto/espelho', name: 'espelho-ponto', component: EspelhoPontoView, meta: { auth: true } },
-  { path: '/ponto/indicadores', name: 'indicadores-ponto', component: IndicadoresView, meta: { auth: true } },
+  // --- Ponto pessoal: só para quem registra ponto, sempre o próprio ---
+  { path: '/', name: 'ponto', component: PontoView, meta: { auth: true, ponto: true } },
+  {
+    path: '/ponto/espelho',
+    name: 'espelho-ponto',
+    component: EspelhoPontoView,
+    props: { escopo: 'pessoal' },
+    meta: { auth: true, ponto: true },
+  },
+  {
+    path: '/ponto/indicadores',
+    name: 'indicadores-ponto',
+    component: IndicadoresView,
+    props: { escopo: 'pessoal' },
+    meta: { auth: true, ponto: true },
+  },
+  // Solicitações: o funcionário vê as dele, a gestão vê e analisa as de todos.
   { path: '/ponto/solicitacoes', name: 'solicitacoes-ponto', component: SolicitacoesPontoView, meta: { auth: true } },
   {
     path: '/ponto/solicitacoes/nova',
     name: 'nova-solicitacao-ponto',
     component: NovaSolicitacaoPontoView,
-    meta: { auth: true },
+    meta: { auth: true, ponto: true },
   },
+
+  // --- Gestão: ponto de qualquer funcionário, com seletor ---
   { path: '/gestor', name: 'painel-gestor', component: PainelGestorView, meta: { auth: true, gestor: true } },
+  {
+    path: '/gestao/ponto/espelho',
+    name: 'espelho-ponto-equipe',
+    component: EspelhoPontoView,
+    props: { escopo: 'equipe' },
+    meta: { auth: true, gestor: true },
+  },
+  {
+    path: '/gestao/ponto/indicadores',
+    name: 'indicadores-ponto-equipe',
+    component: IndicadoresView,
+    props: { escopo: 'equipe' },
+    meta: { auth: true, gestor: true },
+  },
   { path: '/funcionarios', name: 'funcionarios', component: FuncionariosView, meta: { auth: true, gestor: true } },
   { path: '/meus-dados', name: 'meus-dados', component: MeusDadosView, meta: { auth: true } },
   { path: '/clientes', name: 'clientes', component: ClientesView, meta: { auth: true } },
@@ -90,27 +120,34 @@ const router = createRouter({
 const PAPEIS_GESTAO = ['GESTOR', 'RH', 'ADMIN']
 const PAPEIS_OBRA = ['ENCARREGADO', 'GESTOR', 'ADMIN']
 
-// Gestão (RH/gestor/dono) não bate ponto — a home deles é o Painel.
-const paginaInicial = (papel) =>
-  PAPEIS_GESTAO.includes(papel) ? { name: 'painel-gestor' } : { name: 'ponto' }
+// "Bate ponto" não decorre do papel: a secretária é RH e registra o próprio
+// ponto; a dona da empresa é gestão e não registra. Cache antigo do /me pode
+// não ter o campo — nesse caso assume que registra (default do backend).
+const registraPonto = (user) => user?.registra_ponto !== false
+
+const paginaInicial = (user) => {
+  if (PAPEIS_GESTAO.includes(user?.papel)) return { name: 'painel-gestor' }
+  if (registraPonto(user)) return { name: 'ponto' }
+  return { name: 'ordens-servico' } // nem gestão, nem ponto: sobra o operacional
+}
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
-  const papel = auth.user?.papel
+  const user = auth.user
   if (to.meta.auth && !auth.isAuthenticated) {
     return { name: 'login' }
   }
   if (to.name === 'login' && auth.isAuthenticated) {
-    return paginaInicial(papel)
+    return paginaInicial(user)
   }
-  if (to.name === 'ponto' && PAPEIS_GESTAO.includes(papel)) {
-    return { name: 'painel-gestor' }
+  if (to.meta.ponto && !registraPonto(user)) {
+    return paginaInicial(user)
   }
-  if (to.meta.gestor && !PAPEIS_GESTAO.includes(papel)) {
-    return { name: 'ponto' }
+  if (to.meta.gestor && !PAPEIS_GESTAO.includes(user?.papel)) {
+    return paginaInicial(user)
   }
-  if (to.meta.obra && !PAPEIS_OBRA.includes(papel)) {
-    return paginaInicial(papel)
+  if (to.meta.obra && !PAPEIS_OBRA.includes(user?.papel)) {
+    return paginaInicial(user)
   }
 })
 

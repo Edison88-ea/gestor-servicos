@@ -6,6 +6,11 @@ import { useAuthStore } from '../stores/auth'
 import { dataLocalISO, formatarMinutos } from '../utils/tempo'
 import SeletorFuncionario from '../components/SeletorFuncionario.vue'
 
+// 'pessoal' = o próprio cartão, sem seletor (quem bate ponto).
+// 'equipe'  = cartão de qualquer funcionário, com seletor (gestão).
+const props = defineProps({ escopo: { type: String, default: 'pessoal' } })
+const ehEquipe = computed(() => props.escopo === 'equipe')
+
 const store = usePontoStore()
 const auth = useAuthStore()
 const router = useRouter()
@@ -72,7 +77,15 @@ function paresDeHorarios(registros) {
   return pares.join(' • ')
 }
 
+// Na visão da equipe não há "meu cartão" pra cair em cima — quem é gestão pode
+// nem bater ponto. Sem funcionário escolhido, não busca nada.
+const aguardandoFuncionario = computed(() => ehEquipe.value && !funcionarioSel.value)
+
 async function carregarMes() {
+  if (aguardandoFuncionario.value) {
+    espelho.value = null
+    return
+  }
   carregando.value = true
   erro.value = ''
   const inicio = mesReferencia.value
@@ -81,7 +94,7 @@ async function carregarMes() {
     espelho.value = await store.buscarEspelho({
       dataInicio: dataLocalISO(inicio),
       dataFim: dataLocalISO(fim),
-      funcionario: funcionarioSel.value || undefined,
+      funcionario: ehEquipe.value ? funcionarioSel.value : undefined,
     })
   } catch {
     erro.value = 'Não foi possível carregar o cartão de ponto.'
@@ -104,7 +117,7 @@ watch([mesReferencia, funcionarioSel], carregarMes, { immediate: true })
 <template>
   <div class="top-bar">
     <button class="btn-secondary" style="border: none; background: none" @click="router.back()">← Voltar</button>
-    <strong>Cartão Ponto</strong>
+    <strong>{{ ehEquipe ? 'Ponto da Equipe' : 'Meu Cartão Ponto' }}</strong>
     <button type="button" style="border: none; background: none; color: var(--accent); font-weight: 600" @click="exportar">
       Exportar
     </button>
@@ -116,8 +129,18 @@ watch([mesReferencia, funcionarioSel], carregarMes, { immediate: true })
       <div>Cartão Ponto — <span style="text-transform: capitalize">{{ rotuloMes }}</span></div>
     </div>
 
-    <SeletorFuncionario v-model="funcionarioSel" @trocou="nomeFuncionario = $event || ''" />
+    <SeletorFuncionario
+      v-if="ehEquipe"
+      v-model="funcionarioSel"
+      rotulo-vazio="Selecione um funcionário"
+      @trocou="nomeFuncionario = $event || ''"
+    />
 
+    <p v-if="aguardandoFuncionario" class="card" style="color: var(--text-muted)">
+      Escolha um funcionário para ver o cartão de ponto.
+    </p>
+
+    <template v-else>
     <div class="ocultar-impressao card" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px">
       <button class="btn-secondary" style="padding: 6px 12px" @click="mudarMes(-1)">‹</button>
       <strong style="text-transform: capitalize">{{ rotuloMes }}</strong>
@@ -206,6 +229,7 @@ watch([mesReferencia, funcionarioSel], carregarMes, { immediate: true })
           </div>
         </li>
       </ul>
+    </template>
     </template>
   </div>
 </template>

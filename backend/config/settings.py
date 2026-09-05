@@ -128,6 +128,15 @@ DATABASES = {
     )
 }
 
+# Reaproveita a conexão com o Postgres entre requisições (padrão do Django é
+# abrir uma conexão nova a cada request). Render -> Neon é uma conexão TLS
+# externa; sem isso, cada endpoint paga ~20-80 ms só de handshake. Use o
+# endpoint *pooled* do Neon (host com "-pooler") no DATABASE_URL.
+# Só vale pra Postgres; no SQLite local o valor é inofensivo.
+if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=600)
+    DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+
 
 # Custom user model (funcionários: técnicos, gestores, RH, admin)
 AUTH_USER_MODEL = "accounts.Usuario"

@@ -61,8 +61,10 @@ def _ordens(user):
 def _saldo_horas_mes(funcionarios, inicio_mes, ate):
     extras = faltantes = 0
     if ate >= inicio_mes:
-        for func in funcionarios:
-            for dia in _calcular_dias(func, inicio_mes.isoformat(), ate.isoformat(), None):
+        for func in (f for f in funcionarios if f.registra_ponto):
+            for dia in _calcular_dias(
+                func, inicio_mes.isoformat(), ate.isoformat(), None, resumo=True
+            ):
                 extras += dia["extra_minutos"]
                 faltantes += dia["falta_minutos"]
     return extras, faltantes
@@ -85,14 +87,28 @@ def painel(request):
 
     # --- KPIs ---
     extras, faltantes = _saldo_horas_mes(funcionarios, inicio_mes, hoje - timedelta(days=1))
+    # três contagens de OS numa query só (Count com filtro condicional)
+    os_contagens = os_qs.aggregate(
+        abertas=Count("id", filter=Q(status__in=_OS_ABERTAS)),
+        concl_semana=Count(
+            "id",
+            filter=Q(
+                status=OrdemServico.Status.CONCLUIDA,
+                data_conclusao__date__gte=inicio_semana,
+            ),
+        ),
+        concl_mes=Count(
+            "id",
+            filter=Q(
+                status=OrdemServico.Status.CONCLUIDA,
+                data_conclusao__date__gte=inicio_mes,
+            ),
+        ),
+    )
     kpis = {
-        "os_abertas": os_qs.filter(status__in=_OS_ABERTAS).count(),
-        "os_concluidas_semana": os_qs.filter(
-            status=OrdemServico.Status.CONCLUIDA, data_conclusao__date__gte=inicio_semana
-        ).count(),
-        "os_concluidas_mes": os_qs.filter(
-            status=OrdemServico.Status.CONCLUIDA, data_conclusao__date__gte=inicio_mes
-        ).count(),
+        "os_abertas": os_contagens["abertas"],
+        "os_concluidas_semana": os_contagens["concl_semana"],
+        "os_concluidas_mes": os_contagens["concl_mes"],
         "solicitacoes_pendentes": (
             SolicitacaoPonto.objects.filter(status=SolicitacaoPonto.Status.PENDENTE).count()
             if user.e_gestao

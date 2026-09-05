@@ -19,6 +19,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "encarregado_responsavel",
             "telefone",
             "cargo",
+            "registra_ponto",
             "periodo1_inicio",
             "periodo1_fim",
             "periodo2_inicio",
@@ -85,6 +86,7 @@ class FuncionarioSerializer(serializers.ModelSerializer):
             "data_desligamento",
             "salario",
             # jornada
+            "registra_ponto",
             "periodo1_inicio",
             "periodo1_fim",
             "periodo2_inicio",

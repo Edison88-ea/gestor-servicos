@@ -11,6 +11,8 @@ const auth = useAuthStore()
 const router = useRouter()
 
 const ehGestao = computed(() => ['GESTOR', 'RH', 'ADMIN'].includes(auth.user?.papel))
+// Independente do papel: a secretária é RH e bate ponto; a dona é gestão e não.
+const registraPonto = computed(() => auth.user?.registra_ponto !== false)
 
 function formatarHora(valor) {
   return valor ? valor.slice(0, 5) : null
@@ -52,25 +54,41 @@ function sair() {
           {{ auth.user?.first_name ? `${auth.user.first_name} ${auth.user.last_name}` : auth.user?.username }}
         </strong>
         <span v-if="auth.user?.cargo" style="color: var(--text-muted); font-size: 14px; display: block">{{ auth.user.cargo }}</span>
-        <span v-if="auth.user?.periodo1_inicio" style="color: var(--text-muted); font-size: 13px; display: block; margin-top: 4px">
+        <span v-if="registraPonto && auth.user?.periodo1_inicio" style="color: var(--text-muted); font-size: 13px; display: block; margin-top: 4px">
           Período 1: {{ formatarHora(auth.user.periodo1_inicio) }} - {{ formatarHora(auth.user.periodo1_fim) }}
         </span>
-        <span v-if="auth.user?.periodo2_inicio" style="color: var(--text-muted); font-size: 13px; display: block">
+        <span v-if="registraPonto && auth.user?.periodo2_inicio" style="color: var(--text-muted); font-size: 13px; display: block">
           Período 2: {{ formatarHora(auth.user.periodo2_inicio) }} - {{ formatarHora(auth.user.periodo2_fim) }}
         </span>
       </div>
 
       <nav style="padding: 8px 0; display: flex; flex-direction: column">
-        <button v-if="ehGestao" type="button" class="item-menu" @click="irPara('/gestor')">Painel</button>
-        <button v-if="!ehGestao" type="button" class="item-menu" @click="irPara('/')">Bater Ponto</button>
-        <button type="button" class="item-menu" @click="irPara('/ponto/indicadores')">Indicadores</button>
-        <button type="button" class="item-menu" @click="irPara('/ponto/espelho')">Cartão Ponto</button>
-        <button type="button" class="item-menu" @click="irPara('/ponto/solicitacoes')">Solicitações</button>
-        <button v-if="ehGestao" type="button" class="item-menu" @click="irPara('/funcionarios')">Funcionários</button>
-        <button v-else type="button" class="item-menu" @click="irPara('/meus-dados')">Meus dados</button>
+        <template v-if="registraPonto">
+          <div class="titulo-bloco">Meu ponto</div>
+          <button type="button" class="item-menu" @click="irPara('/')">Bater Ponto</button>
+          <button type="button" class="item-menu" @click="irPara('/ponto/espelho')">Meu Cartão Ponto</button>
+          <button type="button" class="item-menu" @click="irPara('/ponto/indicadores')">Meus Indicadores</button>
+          <button v-if="!ehGestao" type="button" class="item-menu" @click="irPara('/ponto/solicitacoes')">
+            Minhas Solicitações
+          </button>
+        </template>
+
+        <template v-if="ehGestao">
+          <div class="titulo-bloco">Gestão</div>
+          <button type="button" class="item-menu" @click="irPara('/gestor')">Painel</button>
+          <button type="button" class="item-menu" @click="irPara('/gestao/ponto/espelho')">Ponto da Equipe</button>
+          <button type="button" class="item-menu" @click="irPara('/gestao/ponto/indicadores')">
+            Indicadores da Equipe
+          </button>
+          <button type="button" class="item-menu" @click="irPara('/ponto/solicitacoes')">Solicitações</button>
+          <button type="button" class="item-menu" @click="irPara('/funcionarios')">Funcionários</button>
+        </template>
+
+        <div class="titulo-bloco">Operação</div>
         <button type="button" class="item-menu" @click="irPara('/ordens-servico')">Ordens de Serviço</button>
         <button type="button" class="item-menu" @click="irPara('/obras')">Obras</button>
         <button type="button" class="item-menu" @click="irPara('/clientes')">Clientes</button>
+        <button v-if="!ehGestao" type="button" class="item-menu" @click="irPara('/meus-dados')">Meus dados</button>
       </nav>
 
       <div style="border-top: 1px solid var(--border); padding: 8px 0">
@@ -92,5 +110,13 @@ function sair() {
 }
 .item-menu:active {
   background: var(--bg);
+}
+.titulo-bloco {
+  padding: 14px 16px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 </style>

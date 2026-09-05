@@ -65,6 +65,7 @@ const form = reactive({
   data_admissao: f?.data_admissao ?? '',
   data_desligamento: f?.data_desligamento ?? '',
   salario: f?.salario ?? '',
+  registra_ponto: f?.registra_ponto ?? true,
   periodo1_inicio: (f?.periodo1_inicio ?? '').slice(0, 5),
   periodo1_fim: (f?.periodo1_fim ?? '').slice(0, 5),
   periodo2_inicio: (f?.periodo2_inicio ?? '').slice(0, 5),
@@ -269,13 +270,20 @@ async function reativar() {
 
     <fieldset>
       <legend>Jornada (segunda a sexta)</legend>
-      <div class="grade">
+      <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+        <input v-model="form.registra_ponto" type="checkbox" :disabled="somenteLeitura" style="width: auto" />
+        Registra ponto
+      </label>
+      <p class="dica" style="margin-top: 0">
+        Desmarque para quem não bate ponto (sócios, diretoria). Continua tendo acesso ao sistema.
+      </p>
+      <div v-if="form.registra_ponto" class="grade">
         <label>Período 1 — início<input v-model="form.periodo1_inicio" type="time" :disabled="somenteLeitura" /></label>
         <label>Período 1 — fim<input v-model="form.periodo1_fim" type="time" :disabled="somenteLeitura" /></label>
         <label>Período 2 — início<input v-model="form.periodo2_inicio" type="time" :disabled="somenteLeitura" /></label>
         <label>Período 2 — fim<input v-model="form.periodo2_fim" type="time" :disabled="somenteLeitura" /></label>
       </div>
-      <p class="dica">Deixe o período 2 em branco se o funcionário tiver só um turno.</p>
+      <p v-if="form.registra_ponto" class="dica">Deixe o período 2 em branco se o funcionário tiver só um turno.</p>
     </fieldset>
 
     <fieldset>

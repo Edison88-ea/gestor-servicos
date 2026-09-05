@@ -153,6 +153,42 @@ class EncarregadoPontoTests(TestCase):
         self.assertEqual(resp.data["count"], 0)
 
 
+class RegistraPontoTests(TestCase):
+    """Quem não registra ponto (dona, diretoria) não bate ponto, mesmo sendo
+    gestão — e continua com acesso ao resto do sistema."""
+
+    def setUp(self):
+        self.api = APIClient()
+
+    def test_quem_nao_registra_ponto_nao_bate_ponto(self):
+        dona = Usuario.objects.create_user(
+            username="dona", password="x", papel=Usuario.Papel.GESTOR, registra_ponto=False
+        )
+        self.api.force_authenticate(dona)
+        resp = self.api.post(
+            "/api/registros-ponto/",
+            {"tipo": _T.ENTRADA, "registrado_em": timezone.now().isoformat()},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(RegistroPonto.objects.count(), 0)
+
+    def test_gestao_que_registra_ponto_bate_normalmente(self):
+        # a secretária: RH (cuida do ponto de todos) e ainda bate o próprio
+        secretaria = Usuario.objects.create_user(
+            username="secretaria", password="x", papel=Usuario.Papel.RH
+        )
+        self.assertTrue(secretaria.registra_ponto)  # default
+        self.api.force_authenticate(secretaria)
+        resp = self.api.post(
+            "/api/registros-ponto/",
+            {"tipo": _T.ENTRADA, "registrado_em": timezone.now().isoformat()},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(RegistroPonto.objects.filter(funcionario=secretaria).count(), 1)
+
+
 class ApuracaoPosicionalTests(TestCase):
     """Extra = trabalho fora da janela do horário; falta = janela descoberta.
     O saldo continua sendo trabalhado - carga (= extra - falta)."""
