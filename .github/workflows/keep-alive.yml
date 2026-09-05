@@ -29,10 +29,15 @@ jobs:
         run: |
           url="https://gestor-servicos.onrender.com/healthz/"
           for i in 1 2; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 --retry 2 --retry-delay 5 "$url" || echo "000")
+            if [ "$i" = "2" ]; then
+              sleep 90
+            fi
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              --max-time 120 --retry 2 --retry-delay 5 --retry-all-errors "$url" || echo "000")
             echo "ping $i -> HTTP $code"
             if [ "$code" != "200" ]; then
               echo "::warning::keep-alive: healthz respondeu $code (esperado 200)"
             fi
-            [ "$i" = "1" ] && sleep 90
           done
+          # Nunca falha o job: um ping ruim vira só warning, não e-mail de erro.
+          exit 0
