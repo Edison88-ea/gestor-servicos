@@ -8,10 +8,18 @@ const client = axios.create({
   timeout: 20000,
 })
 
+// Uploads (fotos da OS, assinatura do cliente) são multipart e sobem por 4G
+// de campo — 20s estoura fácil e o técnico vê "verifique a conexão" mesmo com
+// o servidor tendo recebido tudo. Dá mais fôlego quando o corpo é um FormData.
+const TIMEOUT_UPLOAD = 60000
+
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  if (config.data instanceof FormData) {
+    config.timeout = TIMEOUT_UPLOAD
   }
   return config
 })
