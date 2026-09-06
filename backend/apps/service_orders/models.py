@@ -61,6 +61,11 @@ class OrdemServico(models.Model):
 
     class Meta:
         ordering = ["-criado_em"]
+        indexes = [
+            models.Index(fields=["status"]),
+            # painel filtra OS concluídas por mês / semana
+            models.Index(fields=["status", "data_conclusao"]),
+        ]
 
     def __str__(self):
         return f"OS {self.numero} - {self.cliente.nome}"

@@ -1,6 +1,7 @@
 import csv
 import json
 
+from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, viewsets
@@ -79,11 +80,14 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
                 )
         serializer.save()
 
+    # Ações que devolvem a OS serializada com fotos/pausas aninhadas.
+    _ACOES_COM_ANINHADOS = {"retrieve", "iniciar", "pausar", "retomar", "concluir", "create"}
+
     def get_queryset(self):
         qs = OrdemServico.objects.select_related("cliente", "tecnico")
-        # fotos/pausas só são serializadas no detalhe; na lista seriam um
-        # prefetch caro e inútil.
-        if self.action != "list":
+        # fotos/pausas só entram na resposta do detalhe/ações de status;
+        # em list/exportar/relatos seria um prefetch caro e inútil.
+        if self.action in self._ACOES_COM_ANINHADOS:
             qs = qs.prefetch_related("fotos", "pausas")
         user = self.request.user
         params = self.request.query_params
@@ -207,10 +211,12 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
             ordem.checklist = request.data["checklist"]
         if "assinatura_cliente" in request.FILES:
             ordem.assinatura_cliente = request.FILES["assinatura_cliente"]
-        ordem.save()
 
-        if not ja_concluida:
-            self._avisar_conclusao(ordem, request.user)
+        with transaction.atomic():
+            ordem.save()
+            if not ja_concluida:
+                self._avisar_conclusao(ordem, request.user)
+
         return Response(self.get_serializer(ordem).data)
 
     def _avisar_conclusao(self, ordem, autor):

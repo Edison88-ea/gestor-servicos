@@ -31,6 +31,9 @@ services:
         value: ".onrender.com"
       - key: CSRF_TRUSTED_ORIGINS
         value: "https://*.onrender.com"
+      # HSTS: 30 dias. O HTTPS do *.onrender.com é garantido pelo Render.
+      - key: SECURE_HSTS_SECONDS
+        value: "2592000"
       # --- preencher manualmente no painel ---
       - key: DATABASE_URL
         sync: false

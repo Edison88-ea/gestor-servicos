@@ -124,7 +124,7 @@ def _cliente_e_modelo():
             )
         # As credenciais AWS vêm do ambiente (AWS_ACCESS_KEY_ID /
         # AWS_SECRET_ACCESS_KEY no .env, ou a IAM role do servidor).
-        client = anthropic.AnthropicBedrockMantle(aws_region=settings.AWS_BEDROCK_REGION)
+        client = anthropic.AnthropicBedrock(aws_region=settings.AWS_BEDROCK_REGION)
         modelo = settings.RELATO_IA_MODELO or "anthropic.claude-haiku-4-5"
         return client, modelo
 
