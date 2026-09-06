@@ -1,3 +1,4 @@
+from django.core.validators import FileExtensionValidator
 from rest_framework import serializers
 
 from config.drf_fields import RelativeFileField, RelativeImageField
@@ -70,7 +71,11 @@ class EtapaSerializer(serializers.ModelSerializer):
 
 
 class PlantaProjetoSerializer(serializers.ModelSerializer):
-    arquivo = RelativeFileField()
+    # O validator do model não é herdado quando o campo é declarado explícito;
+    # repete aqui pra barrar upload de HTML/SVG/etc. já no POST.
+    arquivo = RelativeFileField(
+        validators=[FileExtensionValidator(["pdf", "png", "jpg", "jpeg", "webp"])]
+    )
 
     class Meta:
         model = PlantaProjeto

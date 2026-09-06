@@ -27,6 +27,19 @@ def healthz(request):
     )
 
 
+# Tipos que podem ser exibidos inline com segurança. Qualquer outra coisa que
+# um usuário tenha subido (HTML/SVG com script, etc.) é forçada a download —
+# senão /media/x.html executaria JS na origem do app e roubaria o token do
+# localStorage.
+_MEDIA_INLINE_OK = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "application/pdf",
+}
+
+
 @cache_control(private=True, max_age=60 * 60 * 24 * 7)
 def serve_media(request, path):
     """Serve um arquivo de MEDIA a partir do storage padrão (disco local em dev,
@@ -40,7 +53,14 @@ def serve_media(request, path):
     except (FileNotFoundError, OSError):
         raise Http404
     tipo = mimetypes.guess_type(path)[0] or "application/octet-stream"
-    return FileResponse(arquivo, content_type=tipo)
+    inline = tipo in _MEDIA_INLINE_OK
+    resposta = FileResponse(
+        arquivo,
+        content_type=tipo if inline else "application/octet-stream",
+        as_attachment=not inline,
+    )
+    resposta["X-Content-Type-Options"] = "nosniff"
+    return resposta
 
 
 @never_cache
