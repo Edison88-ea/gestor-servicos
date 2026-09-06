@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useOrdensServicoStore } from '../stores/ordensServico'
 import { useAuthStore } from '../stores/auth'
@@ -29,6 +29,95 @@ const relato = reactive(relatoVazio())
 const processando = ref(false)
 const erro = ref('')
 const assinaturaRef = ref(null)
+
+// Edição do relato: enquanto EM_ANDAMENTO, ou numa OS já CONCLUIDA quando o
+// usuário clica em "Editar" (lembrou de algo que faltou).
+const modoEdicao = ref(false)
+const formRelatoRef = ref(null)
+async function abrirEdicao() {
+  modoEdicao.value = true
+  erro.value = ''
+  await nextTick()
+  formRelatoRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+function cancelarEdicao() {
+  modoEdicao.value = false
+  erro.value = ''
+  // volta o formulário pro que está salvo no servidor
+  const salvo = ordem.value?.relato
+  Object.assign(relato, relatoVazio(), salvo && typeof salvo === 'object' ? salvo : {})
+  if (!relato.servicos.length) relato.servicos.push('')
+}
+const editandoRelato = computed(
+  () =>
+    ordem.value?.status === 'EM_ANDAMENTO' ||
+    (ordem.value?.status === 'CONCLUIDA' && modoEdicao.value),
+)
+
+// Rascunho local do relato: salvo neste aparelho conforme se digita, pra não
+// perder o que foi preenchido ao sair da tela antes de concluir.
+const chaveRascunho = computed(() => `os_rascunho_${props.id}`)
+const rascunhoRestaurado = ref(false)
+let rascunhoPronto = false
+let rascunhoTimer = null
+
+const relatoEditadoEm = computed(() => {
+  const o = ordem.value
+  if (!o || o.status !== 'CONCLUIDA' || !o.data_conclusao || !o.atualizado_em) return null
+  // margem pra não marcar "editado" logo após concluir (mesmo save)
+  return new Date(o.atualizado_em) - new Date(o.data_conclusao) > 120000 ? o.atualizado_em : null
+})
+
+function lerRascunho() {
+  try {
+    const r = JSON.parse(localStorage.getItem(chaveRascunho.value) || 'null')
+    return r && typeof r === 'object' ? r : null
+  } catch {
+    return null
+  }
+}
+function relatoTemConteudo() {
+  return Boolean(
+    relato.local.trim() ||
+      relato.servicos.some((s) => s.trim()) ||
+      relato.materiais.length ||
+      relato.observacoes.trim(),
+  )
+}
+function salvarRascunho() {
+  try {
+    if (relatoTemConteudo()) {
+      localStorage.setItem(chaveRascunho.value, JSON.stringify(relato))
+    } else {
+      localStorage.removeItem(chaveRascunho.value)
+    }
+  } catch {
+    /* cota cheia / aba privada: ignora */
+  }
+}
+function limparRascunho() {
+  try {
+    localStorage.removeItem(chaveRascunho.value)
+  } catch {
+    /* ignora */
+  }
+  rascunhoRestaurado.value = false
+}
+function descartarRascunho() {
+  limparRascunho()
+  Object.assign(relato, relatoVazio())
+  if (nomeUsuario()) relato.equipe = [nomeUsuario()]
+}
+
+watch(
+  relato,
+  () => {
+    if (!rascunhoPronto || ordem.value?.status !== 'EM_ANDAMENTO') return
+    clearTimeout(rascunhoTimer)
+    rascunhoTimer = setTimeout(salvarRascunho, 600)
+  },
+  { deep: true },
+)
 
 const enviandoFoto = ref(false)
 const erroFoto = ref('')
@@ -76,8 +165,25 @@ async function carregar() {
   }
   const salvo = ordem.value.relato
   Object.assign(relato, relatoVazio(), salvo && typeof salvo === 'object' ? salvo : {})
+
+  // OS ainda em andamento: se há rascunho salvo neste aparelho, ele é mais
+  // recente que o servidor (o relato só sobe ao concluir) — restaura.
+  if (ordem.value.status === 'EM_ANDAMENTO') {
+    const rascunho = lerRascunho()
+    if (rascunho) {
+      Object.assign(relato, relatoVazio(), rascunho)
+      if (relatoTemConteudo()) {
+        rascunhoRestaurado.value = true
+      } else {
+        Object.assign(relato, relatoVazio(), salvo && typeof salvo === 'object' ? salvo : {})
+        limparRascunho()
+      }
+    }
+  }
+
   if (!relato.servicos.length) relato.servicos.push('')
   if (!relato.equipe.length && nomeUsuario()) relato.equipe.push(nomeUsuario())
+  rascunhoPronto = true
 }
 
 async function iniciar() {
@@ -131,16 +237,20 @@ async function concluir() {
     return
   }
 
+  const eraEdicao = modoEdicao.value
   try {
     ordem.value = await store.concluir(props.id, {
       relato: { ...relato },
       assinatura_cliente: assinatura,
     })
+    limparRascunho()
+    modoEdicao.value = false
   } catch (e) {
     console.error('Falha ao concluir a OS', e)
+    const acao = eraEdicao ? 'salvar as alterações' : 'concluir a OS'
     erro.value = e?.response?.data
-      ? `Não foi possível concluir a OS: ${JSON.stringify(e.response.data)}`
-      : 'Não foi possível concluir a OS. Verifique a conexão.'
+      ? `Não foi possível ${acao}: ${JSON.stringify(e.response.data)}`
+      : `Não foi possível ${acao}. Verifique a conexão.`
   } finally {
     processando.value = false
   }
@@ -279,7 +389,7 @@ onMounted(carregar)
       <p v-if="erroFoto" style="color: var(--danger)">{{ erroFoto }}</p>
 
       <button
-        v-if="ordem.status !== 'CONCLUIDA'"
+        v-if="ordem.status !== 'CONCLUIDA' || modoEdicao"
         type="button"
         class="btn-secondary"
         :disabled="enviandoFoto"
@@ -297,22 +407,47 @@ onMounted(carregar)
       />
     </div>
 
-    <div v-if="ordem.status === 'EM_ANDAMENTO'" class="card" style="display: flex; flex-direction: column; gap: 16px">
+    <div v-if="editandoRelato" ref="formRelatoRef" class="card" style="display: flex; flex-direction: column; gap: 16px">
       <div style="display: flex; justify-content: space-between; align-items: center">
-        <h2 style="margin: 0">Relato do serviço</h2>
+        <h2 style="margin: 0">{{ modoEdicao ? 'Editar relato' : 'Relato do serviço' }}</h2>
         <button type="button" class="btn-secondary" style="padding: 6px 12px; border-radius: 8px; font-size: 13px" @click="mostrarCopiar = true">
           Copiar de outra OS
         </button>
       </div>
+
+      <div
+        v-if="rascunhoRestaurado"
+        style="background: var(--surface-2, rgba(255, 255, 255, 0.04)); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; gap: 8px"
+      >
+        <span>Rascunho restaurado deste aparelho.</span>
+        <button type="button" class="btn-secondary" style="padding: 4px 10px; border-radius: 6px; font-size: 12px" @click="descartarRascunho">
+          descartar
+        </button>
+      </div>
+
       <RelatoOs :relato="relato" />
 
       <div>
         Assinatura do cliente
+        <p v-if="modoEdicao && ordem.assinatura_cliente" style="color: var(--text-muted); font-size: 13px; margin: 2px 0 0">
+          Assine de novo só se precisar trocar a assinatura atual.
+        </p>
         <AssinaturaCanvas ref="assinaturaRef" style="margin-top: 4px" />
       </div>
 
       <p v-if="erro" style="color: var(--danger)">{{ erro }}</p>
-      <button class="btn" :disabled="processando" @click="concluir">Concluir OS</button>
+      <button class="btn" :disabled="processando" @click="concluir">
+        {{ modoEdicao ? 'Salvar alterações' : 'Concluir OS' }}
+      </button>
+      <button
+        v-if="modoEdicao"
+        type="button"
+        class="btn-secondary"
+        :disabled="processando"
+        @click="cancelarEdicao"
+      >
+        Cancelar edição
+      </button>
     </div>
 
     <ModalCopiarRelato
@@ -333,14 +468,23 @@ onMounted(carregar)
           Comprovante
         </RouterLink>
       </div>
-      <div v-if="ordem.observacoes_tecnico" style="margin: 8px 0">
-        <strong>Relato:</strong>
-        <pre style="white-space: pre-wrap; font: inherit; margin: 4px 0 0">{{ ordem.observacoes_tecnico }}</pre>
-      </div>
-      <div v-if="ordem.assinatura_cliente">
-        <strong>Assinatura do cliente:</strong>
-        <img :src="ordem.assinatura_cliente" alt="Assinatura do cliente" style="max-width: 100%; border: 1px solid var(--border); border-radius: 8px; margin-top: 6px" />
-      </div>
+      <p v-if="relatoEditadoEm" style="color: var(--text-muted); font-size: 13px; margin: 4px 0 0">
+        Relato editado em {{ new Date(relatoEditadoEm).toLocaleString('pt-BR') }}
+      </p>
+
+      <template v-if="!modoEdicao">
+        <div v-if="ordem.observacoes_tecnico" style="margin: 8px 0">
+          <strong>Relato:</strong>
+          <pre style="white-space: pre-wrap; font: inherit; margin: 4px 0 0">{{ ordem.observacoes_tecnico }}</pre>
+        </div>
+        <div v-if="ordem.assinatura_cliente" style="margin-bottom: 12px">
+          <strong>Assinatura do cliente:</strong>
+          <img :src="ordem.assinatura_cliente" alt="Assinatura do cliente" style="max-width: 100%; border: 1px solid var(--border); border-radius: 8px; margin-top: 6px" />
+        </div>
+        <button type="button" class="btn-secondary" style="width: 100%" @click="abrirEdicao">
+          Editar
+        </button>
+      </template>
     </div>
   </div>
 

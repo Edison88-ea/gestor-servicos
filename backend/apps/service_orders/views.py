@@ -138,9 +138,16 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def concluir(self, request, pk=None):
+        """Conclui a OS. Chamar de novo numa OS já concluída vira "salvar
+        edição": atualiza relato/observações/checklist/assinatura sem mexer no
+        status nem na data de conclusão, e sem notificar de novo. (Isso também
+        torna a ação idempotente para o reenvio da fila offline.)"""
         ordem = self.get_object()
-        ordem.status = OrdemServico.Status.CONCLUIDA
-        ordem.data_conclusao = timezone.now()
+        ja_concluida = ordem.status == OrdemServico.Status.CONCLUIDA
+
+        if not ja_concluida:
+            ordem.status = OrdemServico.Status.CONCLUIDA
+            ordem.data_conclusao = timezone.now()
 
         if "relato" in request.data:
             relato = request.data["relato"]
@@ -163,7 +170,8 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
             ordem.assinatura_cliente = request.FILES["assinatura_cliente"]
         ordem.save()
 
-        self._avisar_conclusao(ordem, request.user)
+        if not ja_concluida:
+            self._avisar_conclusao(ordem, request.user)
         return Response(self.get_serializer(ordem).data)
 
     def _avisar_conclusao(self, ordem, autor):

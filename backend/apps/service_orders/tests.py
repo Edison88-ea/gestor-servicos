@@ -143,3 +143,29 @@ class EncarregadoTests(TestCase):
         )
         self.assertEqual(avisados, {self.encarregado.id, gestor.id})
         self.assertNotIn(self.auxiliar.id, avisados)
+
+    def test_reconcluir_edita_sem_mexer_em_status_data_nem_notificar(self):
+        Usuario.objects.create_user(username="g2", password="x", papel=Usuario.Papel.GESTOR)
+        os = self._os(self.auxiliar)
+        self.api.force_authenticate(self.auxiliar)
+        self.api.post(f"/api/ordens-servico/{os.id}/concluir/", {}, format="json")
+
+        os.refresh_from_db()
+        concluida_em = os.data_conclusao
+        n_avisos = Notificacao.objects.filter(tipo=Notificacao.Tipo.OS_CONCLUIDA).count()
+
+        resp = self.api.post(
+            f"/api/ordens-servico/{os.id}/concluir/",
+            {"relato": {"local": "Sala 2", "servicos": ["troca de disjuntor"]}},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+        os.refresh_from_db()
+        self.assertEqual(os.status, OrdemServico.Status.CONCLUIDA)
+        self.assertEqual(os.data_conclusao, concluida_em)  # data original preservada
+        self.assertIn("troca de disjuntor", os.observacoes_tecnico)
+        self.assertEqual(
+            Notificacao.objects.filter(tipo=Notificacao.Tipo.OS_CONCLUIDA).count(),
+            n_avisos,  # nenhum aviso novo
+        )

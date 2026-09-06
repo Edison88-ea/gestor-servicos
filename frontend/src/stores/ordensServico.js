@@ -182,7 +182,17 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
             await blobStore.salvar(blobChave, await paraBlobPersistente(assinatura))
           }
           offline.enfileirarAcao(id, 'concluir', { relato: payload.relato }, blobChave)
-          return this._otimista(id, { status: 'CONCLUIDA', data_conclusao: new Date().toISOString() })
+          // Edição de uma OS já concluída (offline): não repõe a data de
+          // conclusão — só marca o relato otimista.
+          const jaConcluida =
+            this.ordens.find((o) => o.id === id)?.status === 'CONCLUIDA' ||
+            lerCache()[id]?.status === 'CONCLUIDA'
+          return this._otimista(
+            id,
+            jaConcluida
+              ? { relato: payload.relato }
+              : { status: 'CONCLUIDA', data_conclusao: new Date().toISOString() },
+          )
         }
         throw erro
       }
