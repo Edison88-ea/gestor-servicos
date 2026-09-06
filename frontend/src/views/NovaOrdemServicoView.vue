@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useClientesStore } from '../stores/clientes'
 import { useOrdensServicoStore } from '../stores/ordensServico'
@@ -19,6 +19,72 @@ const descricao = ref('')
 const prioridade = ref('MEDIA')
 const criando = ref(false)
 const erro = ref('')
+
+// Rascunho local do formulário: salvo neste aparelho conforme se preenche,
+// pra não perder cliente + tipo + descrição ao sair da tela antes de criar.
+const CHAVE_RASCUNHO = 'nova_os_rascunho'
+const rascunhoRestaurado = ref(false)
+let rascunhoPronto = false
+let rascunhoTimer = null
+
+function salvarRascunho() {
+  const temConteudo =
+    clienteSelecionado.value || tipoServico.value.trim() || descricao.value.trim()
+  try {
+    if (temConteudo) {
+      localStorage.setItem(
+        CHAVE_RASCUNHO,
+        JSON.stringify({
+          cliente: clienteSelecionado.value,
+          tipoServico: tipoServico.value,
+          descricao: descricao.value,
+          prioridade: prioridade.value,
+        }),
+      )
+    } else {
+      localStorage.removeItem(CHAVE_RASCUNHO)
+    }
+  } catch {
+    /* cota cheia / aba privada: ignora */
+  }
+}
+function limparRascunho() {
+  try {
+    localStorage.removeItem(CHAVE_RASCUNHO)
+  } catch {
+    /* ignora */
+  }
+  rascunhoRestaurado.value = false
+}
+function descartarRascunho() {
+  limparRascunho()
+  clienteSelecionado.value = null
+  tipoServico.value = ''
+  descricao.value = ''
+  prioridade.value = 'MEDIA'
+}
+
+onMounted(() => {
+  try {
+    const r = JSON.parse(localStorage.getItem(CHAVE_RASCUNHO) || 'null')
+    if (r && (r.cliente || r.tipoServico || r.descricao)) {
+      clienteSelecionado.value = r.cliente || null
+      tipoServico.value = r.tipoServico || ''
+      descricao.value = r.descricao || ''
+      prioridade.value = r.prioridade || 'MEDIA'
+      rascunhoRestaurado.value = true
+    }
+  } catch {
+    /* ignora */
+  }
+  rascunhoPronto = true
+})
+
+watch([clienteSelecionado, tipoServico, descricao, prioridade], () => {
+  if (!rascunhoPronto) return
+  clearTimeout(rascunhoTimer)
+  rascunhoTimer = setTimeout(salvarRascunho, 600)
+})
 
 let debounceId = null
 watch(termoBusca, (valor) => {
@@ -61,6 +127,7 @@ async function criarOs() {
     }
     const nova = await ordensStore.criar(payload)
     rascunho.limpar()
+    limparRascunho()
     router.replace(`/ordens-servico/${nova.id}`)
   } catch {
     erro.value = 'Não foi possível criar a OS. Tente novamente.'
@@ -77,6 +144,16 @@ async function criarOs() {
   </div>
 
   <div class="content">
+    <div
+      v-if="rascunhoRestaurado && !cadastrandoCliente"
+      style="background: var(--surface-2, rgba(255, 255, 255, 0.04)); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px"
+    >
+      <span>Rascunho restaurado deste aparelho.</span>
+      <button type="button" class="btn-secondary" style="padding: 4px 10px; border-radius: 6px; font-size: 12px" @click="descartarRascunho">
+        descartar
+      </button>
+    </div>
+
     <p v-if="rascunho.latitude != null" style="color: var(--success); margin-bottom: 12px">
       📍 Localização atual capturada
     </p>
