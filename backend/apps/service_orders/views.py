@@ -10,7 +10,7 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Usuario
 from apps.notifications.models import Notificacao
-from apps.notifications.utils import notificar
+from apps.notifications.utils import notificar, notificar_muitos
 
 from .catalogo import alimentar_catalogo
 from .models import (
@@ -192,8 +192,7 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
             destinatarios.add(tecnico.encarregado_responsavel)
         destinatarios.discard(autor)
 
-        for destinatario in destinatarios:
-            notificar(destinatario, Notificacao.Tipo.OS_CONCLUIDA, mensagem, link=link)
+        notificar_muitos(destinatarios, Notificacao.Tipo.OS_CONCLUIDA, mensagem, link=link)
 
     @action(detail=False, methods=["get"], url_path="exportar")
     def exportar(self, request):

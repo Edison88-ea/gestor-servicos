@@ -189,6 +189,43 @@ class RegistraPontoTests(TestCase):
         self.assertEqual(RegistroPonto.objects.filter(funcionario=secretaria).count(), 1)
 
 
+class TimestampPontoTests(TestCase):
+    """O horário da batida não pode ser forjado pelo cliente."""
+
+    def setUp(self):
+        self.tec = Usuario.objects.create_user(username="t", password="x")
+        self.api = APIClient()
+        self.api.force_authenticate(self.tec)
+
+    def _bater(self, quando, **extra):
+        return self.api.post(
+            "/api/registros-ponto/",
+            {"tipo": _T.ENTRADA, "registrado_em": quando.isoformat(), **extra},
+            format="json",
+        )
+
+    def test_batida_no_futuro_recusada(self):
+        resp = self._bater(timezone.now() + timezone.timedelta(hours=2))
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(RegistroPonto.objects.count(), 0)
+
+    def test_batida_online_backdatada_recusada(self):
+        resp = self._bater(timezone.now() - timezone.timedelta(hours=3))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_batida_online_agora_aceita(self):
+        resp = self._bater(timezone.now())
+        self.assertEqual(resp.status_code, 201)
+
+    def test_batida_offline_atrasada_aceita_dentro_de_48h(self):
+        resp = self._bater(timezone.now() - timezone.timedelta(hours=10), origem_offline=True)
+        self.assertEqual(resp.status_code, 201)
+
+    def test_batida_offline_antiga_demais_recusada(self):
+        resp = self._bater(timezone.now() - timezone.timedelta(days=5), origem_offline=True)
+        self.assertEqual(resp.status_code, 400)
+
+
 class ApuracaoPosicionalTests(TestCase):
     """Extra = trabalho fora da janela do horário; falta = janela descoberta.
     O saldo continua sendo trabalhado - carga (= extra - falta)."""

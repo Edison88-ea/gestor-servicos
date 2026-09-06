@@ -1,6 +1,8 @@
 from collections import defaultdict
 from datetime import date, datetime, time as _time, timedelta
 
+from django.db import IntegrityError, transaction
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status as http_status, viewsets
 from rest_framework.decorators import action
@@ -9,7 +11,7 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Usuario
 from apps.notifications.models import Notificacao
-from apps.notifications.utils import notificar
+from apps.notifications.utils import notificar, notificar_muitos
 
 from .models import RegistroPonto, SolicitacaoPonto
 from .serializers import RegistroPontoSerializer, SolicitacaoPontoSerializer
@@ -407,16 +409,43 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        if not self.request.user.registra_ponto:
+        user = self.request.user
+        if not user.registra_ponto:
+            raise ValidationError({"detail": "Este usuário não registra ponto."})
+
+        quando = serializer.validated_data["registrado_em"]
+        agora = timezone.now()
+        offline = serializer.validated_data.get("origem_offline", False)
+
+        # Nunca no futuro (mais que uma pequena folga de relógio).
+        if quando > agora + timedelta(minutes=5):
+            raise ValidationError({"registrado_em": "Horário no futuro não é permitido."})
+
+        if offline:
+            # Batida offline pode chegar atrasada (sem sinal em campo), mas não
+            # semanas depois — aí é ajuste retroativo, que passa por aprovação.
+            # `sincronizado_em` (auto) guarda quando de fato chegou: gestão
+            # compara os dois no espelho pra auditar batida offline suspeita.
+            if quando < agora - timedelta(hours=48):
+                raise ValidationError(
+                    {"registrado_em": "Batida offline com mais de 48h. Use uma solicitação de ajuste."}
+                )
+        elif abs((quando - agora).total_seconds()) > 300:
+            # Batida "online" tem que ser agora. Backdatar exige ajuste aprovado.
             raise ValidationError(
-                {"detail": "Este usuário não registra ponto."}
+                {"registrado_em": "Horário diferente da hora atual. Use uma solicitação de ajuste."}
             )
-        validar_sequencia_ponto(
-            self.request.user,
-            serializer.validated_data["tipo"],
-            serializer.validated_data["registrado_em"],
-        )
-        serializer.save(funcionario=self.request.user)
+
+        validar_sequencia_ponto(user, serializer.validated_data["tipo"], quando)
+
+        try:
+            serializer.save(funcionario=user)
+        except IntegrityError:
+            # Corrida entre a checagem de duplicata e o INSERT (reenvio offline
+            # + batida ao vivo): a constraint do BD pegou. Trata como sucesso.
+            raise ValidationError(
+                {"tipo": "Esta batida já foi registrada.", "duplicado": True}
+            )
 
     def _funcionario_e_periodo(self, request):
         user = request.user
@@ -427,7 +456,7 @@ class RegistroPontoViewSet(viewsets.ModelViewSet):
         hoje = timezone.localdate()
         data_inicio = request.query_params.get("data_inicio") or hoje.replace(day=1).isoformat()
         data_fim = request.query_params.get("data_fim") or hoje.isoformat()
-        funcionario = Usuario.objects.get(id=funcionario_id)
+        funcionario = get_object_or_404(Usuario, id=funcionario_id)
         return funcionario, data_inicio, data_fim
 
     @action(detail=False, methods=["get"])
@@ -548,16 +577,17 @@ class SolicitacaoPontoViewSet(viewsets.ModelViewSet):
                 for r in atuais
             ]
         solicitacao = serializer.save(funcionario=self.request.user, **extra)
-        # avisa quem vai analisar (qualquer gestor/RH/admin)
-        for aprovador in Usuario.objects.filter(
-            papel__in=[Usuario.Papel.GESTOR, Usuario.Papel.RH, Usuario.Papel.ADMIN], is_active=True
-        ):
-            notificar(
-                aprovador,
-                Notificacao.Tipo.NOVA_SOLICITACAO,
-                f"{solicitacao.funcionario.get_full_name() or solicitacao.funcionario.username} enviou uma solicitação de ponto.",
-                link="/gestor/solicitacoes",
-            )
+        # avisa quem vai analisar (qualquer gestor/RH/admin) num INSERT só
+        quem = solicitacao.funcionario.get_full_name() or solicitacao.funcionario.username
+        notificar_muitos(
+            Usuario.objects.filter(
+                papel__in=[Usuario.Papel.GESTOR, Usuario.Papel.RH, Usuario.Papel.ADMIN],
+                is_active=True,
+            ),
+            Notificacao.Tipo.NOVA_SOLICITACAO,
+            f"{quem} enviou uma solicitação de ponto.",
+            link="/gestor/solicitacoes",
+        )
 
     def _checar_permissao_analise(self, request):
         if not request.user.e_gestao:
@@ -568,6 +598,7 @@ class SolicitacaoPontoViewSet(viewsets.ModelViewSet):
         return None
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def aprovar(self, request, pk=None):
         erro = self._checar_permissao_analise(request)
         if erro:

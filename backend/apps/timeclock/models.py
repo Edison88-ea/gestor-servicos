@@ -36,6 +36,15 @@ class RegistroPonto(models.Model):
 
     class Meta:
         ordering = ["-registrado_em"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["funcionario", "tipo", "registrado_em"],
+                name="ponto_sem_duplicata_exata",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["funcionario", "registrado_em"]),
+        ]
 
     def __str__(self):
         return f"{self.funcionario} - {self.get_tipo_display()} em {self.registrado_em:%d/%m/%Y %H:%M}"
