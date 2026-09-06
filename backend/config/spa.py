@@ -45,7 +45,13 @@ def serve_media(request, path):
     """Serve um arquivo de MEDIA a partir do storage padrão (disco local em dev,
     bucket R2 em produção). Manter isto na API — em vez de expor o bucket ou
     usar URL assinada — deixa as URLs /media/... estáveis e na mesma origem, o
-    que o service worker do PWA já sabe cachear para uso offline."""
+    que o service worker do PWA já sabe cachear para uso offline.
+
+    NÃO exige autenticação: o `<img src>` não manda header, e o SW precisa
+    cachear sem token. A proteção é o nome do arquivo (Django acrescenta 7
+    caracteres aleatórios), não ser adivinhável. Risco aceito: quem tiver a URL
+    exata (histórico, log, link compartilhado) baixa a imagem. Não guardar aqui
+    nada mais sensível que foto de serviço / assinatura."""
     if not path or path.endswith("/") or ".." in path:
         raise Http404
     try:
