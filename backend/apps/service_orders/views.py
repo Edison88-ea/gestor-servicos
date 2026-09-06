@@ -5,7 +5,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
@@ -38,6 +38,19 @@ class IARateThrottle(UserRateThrottle):
     scope = "ia"
 
 
+# Campos que não podem mudar por PATCH depois que a OS foi concluída (só gestão,
+# e mesmo assim via ação própria). Evita trocar cliente/técnico/tipo de uma OS
+# fechada sem rastro.
+_OS_TRAVADOS_APOS_CONCLUSAO = {
+    "cliente",
+    "tecnico",
+    "tipo_servico",
+    "data_agendada",
+    "data_inicio",
+    "data_conclusao",
+}
+
+
 class OrdemServicoViewSet(viewsets.ModelViewSet):
     serializer_class = OrdemServicoSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -46,6 +59,25 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             return OrdemServicoListSerializer
         return OrdemServicoSerializer
+
+    def perform_destroy(self, instance):
+        # Apagar OS é só da gestão — some o registro do serviço e o comprovante.
+        if not self.request.user.e_gestao:
+            raise PermissionDenied("Apenas a gestão pode excluir uma OS.")
+        instance.delete()
+
+    def perform_update(self, serializer):
+        alvo = serializer.instance
+        if (
+            alvo.status == OrdemServico.Status.CONCLUIDA
+            and not self.request.user.e_gestao
+        ):
+            mudando = set(serializer.validated_data) & _OS_TRAVADOS_APOS_CONCLUSAO
+            if mudando:
+                raise ValidationError(
+                    {c: "Não pode ser alterado numa OS concluída." for c in mudando}
+                )
+        serializer.save()
 
     def get_queryset(self):
         qs = OrdemServico.objects.select_related("cliente", "tecnico")

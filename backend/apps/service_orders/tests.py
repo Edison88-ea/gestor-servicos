@@ -169,3 +169,23 @@ class EncarregadoTests(TestCase):
             Notificacao.objects.filter(tipo=Notificacao.Tipo.OS_CONCLUIDA).count(),
             n_avisos,  # nenhum aviso novo
         )
+
+    def test_tecnico_nao_exclui_os_gestor_sim(self):
+        os = self._os(self.auxiliar)
+        self.api.force_authenticate(self.auxiliar)
+        self.assertEqual(self.api.delete(f"/api/ordens-servico/{os.id}/").status_code, 403)
+        gestor = Usuario.objects.create_user("gx", password="x", papel=Usuario.Papel.GESTOR)
+        self.api.force_authenticate(gestor)
+        self.assertEqual(self.api.delete(f"/api/ordens-servico/{os.id}/").status_code, 204)
+
+    def test_tecnico_nao_troca_cliente_de_os_concluida(self):
+        outro_cliente = Cliente.objects.create(nome="Outro")
+        os = self._os(self.auxiliar)
+        self.api.force_authenticate(self.auxiliar)
+        self.api.post(f"/api/ordens-servico/{os.id}/concluir/", {}, format="json")
+        resp = self.api.patch(
+            f"/api/ordens-servico/{os.id}/", {"cliente": outro_cliente.id}, format="json"
+        )
+        self.assertEqual(resp.status_code, 400)
+        os.refresh_from_db()
+        self.assertEqual(os.cliente_id, self.cliente.id)
