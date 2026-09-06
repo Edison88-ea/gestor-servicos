@@ -1,8 +1,9 @@
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path, re_path
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenBlacklistView, TokenRefreshView
 
+from apps.accounts.views import LoginThrottled
 from config.painel import painel
 from config.spa import healthz, serve_media, spa_index
 
@@ -10,8 +11,9 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("healthz/", healthz),
     path("api/painel/", painel, name="painel"),
-    path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/auth/token/", LoginThrottled.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("api/auth/logout/", TokenBlacklistView.as_view(), name="token_blacklist"),
     path("api/", include("apps.accounts.urls")),
     path("api/", include("apps.clients.urls")),
     path("api/", include("apps.service_orders.urls")),

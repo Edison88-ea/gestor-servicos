@@ -2,10 +2,20 @@ from django.utils import timezone
 from rest_framework import filters, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import Usuario
 from .permissions import EhGestao
 from .serializers import FuncionarioSerializer, UsuarioSerializer
+
+
+class LoginThrottled(TokenObtainPairView):
+    """Login com limite por IP (contra brute force / credential stuffing).
+    Taxa em REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['login']."""
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
 
 
 class UsuarioViewSet(viewsets.ReadOnlyModelViewSet):

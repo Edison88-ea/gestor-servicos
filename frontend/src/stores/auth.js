@@ -32,6 +32,12 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     logout() {
+      // Invalida o refresh no servidor (blacklist) — best-effort, não bloqueia
+      // o logout se estiver sem rede.
+      const refresh = localStorage.getItem('refresh_token')
+      if (refresh) {
+        axios.post('/api/auth/logout/', { refresh }).catch(() => {})
+      }
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('user')

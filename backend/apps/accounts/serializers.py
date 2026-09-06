@@ -1,3 +1,5 @@
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .models import Usuario
@@ -126,9 +128,35 @@ class FuncionarioSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Já existe um funcionário com esse usuário.")
         return value
 
+    def validate_password(self, value):
+        if value:
+            try:
+                validate_password(value, user=self.instance)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(list(exc.messages))
+        return value
+
+    def validate_papel(self, value):
+        # GESTOR/RH não podem promover ninguém a ADMIN — só um ADMIN faz isso.
+        pedido_por = getattr(self.context.get("request"), "user", None)
+        if value == Usuario.Papel.ADMIN and (
+            not pedido_por or pedido_por.papel != Usuario.Papel.ADMIN
+        ):
+            raise serializers.ValidationError("Só um administrador pode definir o papel ADMIN.")
+        return value
+
     def validate(self, attrs):
         if not self.instance and not attrs.get("password"):
             raise serializers.ValidationError({"password": "Defina uma senha inicial para o novo funcionário."})
+        # Não deixa GESTOR/RH editar (ou rebaixar) um ADMIN ou superusuário.
+        pedido_por = getattr(self.context.get("request"), "user", None)
+        alvo = self.instance
+        if (
+            alvo
+            and (alvo.papel == Usuario.Papel.ADMIN or alvo.is_superuser)
+            and (not pedido_por or pedido_por.papel != Usuario.Papel.ADMIN)
+        ):
+            raise serializers.ValidationError("Só um administrador pode editar outro administrador.")
         return attrs
 
     def create(self, validated_data):

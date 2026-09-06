@@ -74,6 +74,7 @@ INSTALLED_APPS = [
     # third party
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     # local apps
     "apps.accounts",
@@ -245,6 +246,12 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "config.pagination.PadraoPagination",
     "PAGE_SIZE": 20,
+    # Throttle só nos pontos que interessam (login = brute force; IA = custo).
+    # O resto da API não tem limite — é uso interno autenticado.
+    "DEFAULT_THROTTLE_RATES": {
+        "login": env("THROTTLE_LOGIN", default="20/min"),
+        "ia": env("THROTTLE_IA", default="30/hour"),
+    },
 }
 
 SIMPLE_JWT = {
@@ -253,6 +260,9 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
     "ROTATE_REFRESH_TOKENS": True,
+    # Refresh rotacionado é invalidado — token roubado para de funcionar assim
+    # que o dono renova. Precisa do app token_blacklist.
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 

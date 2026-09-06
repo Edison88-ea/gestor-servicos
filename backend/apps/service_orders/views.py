@@ -7,6 +7,7 @@ from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 
 from apps.accounts.models import Usuario
 from apps.notifications.models import Notificacao
@@ -29,6 +30,12 @@ from .serializers import (
     OrdemServicoSerializer,
     ServicoCatalogoSerializer,
 )
+
+
+class IARateThrottle(UserRateThrottle):
+    """Limita a padronização por IA por usuário (rate 'ia' no settings)."""
+
+    scope = "ia"
 
 
 class OrdemServicoViewSet(viewsets.ModelViewSet):
@@ -256,7 +263,12 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
         ]
         return Response(dados)
 
-    @action(detail=True, methods=["post"], url_path="padronizar-relato")
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="padronizar-relato",
+        throttle_classes=[IARateThrottle],
+    )
     def padronizar_relato(self, request, pk=None):
         ordem = self.get_object()
         texto = request.data.get("texto") or ordem.observacoes_tecnico or ""

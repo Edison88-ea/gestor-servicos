@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -64,3 +65,46 @@ class FuncionarioAPITests(TestCase):
         resp = self.api.get("/api/funcionarios/meu/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["username"], "joao")
+
+    def test_senha_fraca_recusada(self):
+        self.api.force_authenticate(self.rh)
+        resp = self.api.post(
+            "/api/funcionarios/",
+            {"username": "ana", "first_name": "Ana", "papel": "TECNICO", "password": "123456"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("password", resp.data)
+
+    def test_rh_nao_cria_admin(self):
+        self.api.force_authenticate(self.rh)
+        resp = self.api.post(
+            "/api/funcionarios/",
+            {"username": "root", "first_name": "R", "papel": "ADMIN", "password": "umaSenhaBoa9"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_rh_nao_edita_admin(self):
+        admin = Usuario.objects.create_user("adm", password="x", papel=Usuario.Papel.ADMIN)
+        self.api.force_authenticate(self.rh)
+        resp = self.api.patch(f"/api/funcionarios/{admin.id}/", {"cargo": "hackeado"}, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+
+class LoginThrottleTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        Usuario.objects.create_user("u", password="senhaCerta1")
+        self.api = APIClient()
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_muitas_tentativas_de_login_sao_barradas(self):
+        ultimo = None
+        for _ in range(25):
+            ultimo = self.api.post(
+                "/api/auth/token/", {"username": "u", "password": "errada"}, format="json"
+            )
+        self.assertEqual(ultimo.status_code, 429)
