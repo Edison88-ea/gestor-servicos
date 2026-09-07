@@ -11,6 +11,7 @@ const auth = useAuthStore()
 const router = useRouter()
 
 const ehGestao = computed(() => ['GESTOR', 'RH', 'ADMIN'].includes(auth.user?.papel))
+const podeEstoque = computed(() => ['GESTOR', 'ADMIN'].includes(auth.user?.papel))
 // Independente do papel: a secretária é RH e bate ponto; a dona é gestão e não.
 const registraPonto = computed(() => auth.user?.registra_ponto !== false)
 
@@ -87,6 +88,7 @@ function sair() {
         <div class="titulo-bloco">Operação</div>
         <button type="button" class="item-menu" @click="irPara('/ordens-servico')">Ordens de Serviço</button>
         <button type="button" class="item-menu" @click="irPara('/obras')">Obras</button>
+        <button v-if="podeEstoque" type="button" class="item-menu" @click="irPara('/estoque')">Estoque</button>
         <button type="button" class="item-menu" @click="irPara('/clientes')">Clientes</button>
         <button v-if="!ehGestao" type="button" class="item-menu" @click="irPara('/meus-dados')">Meus dados</button>
       </nav>

@@ -24,6 +24,9 @@ import NovaObraView from '../views/NovaObraView.vue'
 import ObraDetalheView from '../views/ObraDetalheView.vue'
 import ObraEtapasView from '../views/ObraEtapasView.vue'
 import RelatorioObraView from '../views/RelatorioObraView.vue'
+import EstoqueView from '../views/EstoqueView.vue'
+import MaterialEstoqueDetalheView from '../views/MaterialEstoqueDetalheView.vue'
+import MovimentacoesEstoqueView from '../views/MovimentacoesEstoqueView.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView },
@@ -87,6 +90,20 @@ const routes = [
     meta: { auth: true },
     props: true,
   },
+  { path: '/estoque', name: 'estoque', component: EstoqueView, meta: { auth: true, estoque: true } },
+  {
+    path: '/estoque/movimentacoes',
+    name: 'estoque-movimentacoes',
+    component: MovimentacoesEstoqueView,
+    meta: { auth: true, estoque: true },
+  },
+  {
+    path: '/estoque/:id',
+    name: 'material-estoque',
+    component: MaterialEstoqueDetalheView,
+    meta: { auth: true, estoque: true },
+    props: true,
+  },
   { path: '/obras', name: 'obras', component: ObrasView, meta: { auth: true } },
   { path: '/obras/nova', name: 'nova-obra', component: NovaObraView, meta: { auth: true, obra: true } },
   {
@@ -119,6 +136,7 @@ const router = createRouter({
 
 const PAPEIS_GESTAO = ['GESTOR', 'RH', 'ADMIN']
 const PAPEIS_OBRA = ['ENCARREGADO', 'GESTOR', 'ADMIN']
+const PAPEIS_ESTOQUE = ['GESTOR', 'ADMIN']
 
 // "Bate ponto" não decorre do papel: a secretária é RH e registra o próprio
 // ponto; a dona da empresa é gestão e não registra. Cache antigo do /me pode
@@ -147,6 +165,9 @@ router.beforeEach((to) => {
     return paginaInicial(user)
   }
   if (to.meta.obra && !PAPEIS_OBRA.includes(user?.papel)) {
+    return paginaInicial(user)
+  }
+  if (to.meta.estoque && !PAPEIS_ESTOQUE.includes(user?.papel)) {
     return paginaInicial(user)
   }
 })
