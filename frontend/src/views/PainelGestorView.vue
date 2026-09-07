@@ -15,7 +15,13 @@ const processandoSolic = ref(null)
 const kpis = computed(() => painel.value?.kpis)
 const equipe = computed(() => painel.value?.equipe ?? [])
 const pendencias = computed(
-  () => painel.value?.pendencias ?? { solicitacoes: [], os_sem_tecnico: [], os_paradas: [] },
+  () =>
+    painel.value?.pendencias ?? {
+      solicitacoes: [],
+      os_sem_tecnico: [],
+      os_paradas: [],
+      estoque_baixo: [],
+    },
 )
 const produtividade = computed(() => painel.value?.produtividade ?? [])
 const obras = computed(() => painel.value?.obras ?? [])
@@ -32,6 +38,7 @@ const tilesKpi = computed(() => {
     { valor: formatarMinutos(k.horas_extras_mes_min), rotulo: 'Horas extras no mês' },
     { valor: formatarMinutos(k.horas_faltantes_mes_min), rotulo: 'Horas faltantes no mês', alerta: k.horas_faltantes_mes_min > 0 },
     { valor: k.obras_ativas, rotulo: 'Obras ativas' },
+    { valor: k.estoque_abaixo_minimo, rotulo: 'Estoque abaixo do mínimo', alerta: k.estoque_abaixo_minimo > 0 },
   ]
 })
 
@@ -190,8 +197,20 @@ onMounted(() => {
             </ul>
           </template>
 
+          <template v-if="pendencias.estoque_baixo && pendencias.estoque_baixo.length">
+            <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 6px; margin-top: 4px">Estoque abaixo do mínimo</div>
+            <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
+              <li v-for="m in pendencias.estoque_baixo" :key="m.id" class="card" style="cursor: pointer" @click="router.push(`/estoque/${m.id}`)">
+                <strong>{{ m.descricao }}</strong>
+                <div style="color: var(--danger); font-size: 13px">
+                  saldo {{ m.saldo }} {{ m.unidade }} · mínimo {{ m.minimo }}
+                </div>
+              </li>
+            </ul>
+          </template>
+
           <p
-            v-if="!pendencias.os_sem_tecnico.length && !pendencias.os_paradas.length && !(eGestao && pendencias.solicitacoes.length)"
+            v-if="!pendencias.os_sem_tecnico.length && !pendencias.os_paradas.length && !(pendencias.estoque_baixo && pendencias.estoque_baixo.length) && !(eGestao && pendencias.solicitacoes.length)"
             class="card"
             style="color: var(--text-muted)"
           >

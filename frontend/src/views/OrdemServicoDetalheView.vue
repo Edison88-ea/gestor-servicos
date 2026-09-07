@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useOrdensServicoStore } from '../stores/ordensServico'
+import { useEstoqueStore } from '../stores/estoque'
 import { useAuthStore } from '../stores/auth'
 import AssinaturaCanvas from '../components/AssinaturaCanvas.vue'
 import RelatoOs from '../components/RelatoOs.vue'
@@ -21,6 +22,7 @@ function relatoVazio() {
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const store = useOrdensServicoStore()
+const estoque = useEstoqueStore()
 const auth = useAuthStore()
 const router = useRouter()
 
@@ -28,6 +30,23 @@ const ordem = ref(null)
 const relato = reactive(relatoVazio())
 const processando = ref(false)
 const erro = ref('')
+
+const podeVerEstoque = computed(() => ['GESTOR', 'ADMIN'].includes(auth.user?.papel))
+const movsEstoque = ref([])
+const baixaIgnorados = computed(() => ordem.value?.baixa_estoque?.ignorados ?? [])
+
+async function carregarMovsEstoque() {
+  if (!podeVerEstoque.value || ordem.value?.status !== 'CONCLUIDA') return
+  try {
+    movsEstoque.value = await estoque.movimentacoes({ ordem_servico: props.id })
+  } catch {
+    movsEstoque.value = []
+  }
+}
+
+function qtdEstoque(v) {
+  return Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+}
 const assinaturaRef = ref(null)
 
 // Edição do relato: enquanto EM_ANDAMENTO, ou numa OS já CONCLUIDA quando o
@@ -184,6 +203,8 @@ async function carregar() {
   if (!relato.servicos.length) relato.servicos.push('')
   if (!relato.equipe.length && nomeUsuario()) relato.equipe.push(nomeUsuario())
   rascunhoPronto = true
+
+  carregarMovsEstoque()
 }
 
 async function iniciar() {
@@ -245,6 +266,7 @@ async function concluir() {
     })
     limparRascunho()
     modoEdicao.value = false
+    carregarMovsEstoque()
   } catch (e) {
     console.error('Falha ao concluir a OS', e)
     const acao = eraEdicao ? 'salvar as alterações' : 'concluir a OS'
@@ -477,6 +499,20 @@ onMounted(carregar)
           <strong>Relato:</strong>
           <pre style="white-space: pre-wrap; font: inherit; margin: 4px 0 0">{{ ordem.observacoes_tecnico }}</pre>
         </div>
+
+        <div v-if="podeVerEstoque && (movsEstoque.length || baixaIgnorados.length)" style="margin: 8px 0 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px">
+          <strong style="font-size: 14px">Baixa de estoque</strong>
+          <ul v-if="movsEstoque.length" style="list-style: none; padding: 0; margin: 6px 0 0; font-size: 13px">
+            <li v-for="mv in movsEstoque" :key="mv.id" style="display: flex; justify-content: space-between; gap: 8px; padding: 2px 0">
+              <RouterLink :to="`/estoque/${mv.material}`" style="color: var(--accent)">{{ mv.material_descricao }}</RouterLink>
+              <span>−{{ qtdEstoque(mv.quantidade) }}</span>
+            </li>
+          </ul>
+          <ul v-if="baixaIgnorados.length" style="list-style: none; padding: 0; margin: 6px 0 0; font-size: 13px; color: var(--text-muted)">
+            <li v-for="(ig, i) in baixaIgnorados" :key="i">{{ ig.descricao }} — não baixado ({{ ig.motivo }})</li>
+          </ul>
+        </div>
+
         <div v-if="ordem.assinatura_cliente" style="margin-bottom: 12px">
           <strong>Assinatura do cliente:</strong>
           <img :src="ordem.assinatura_cliente" alt="Assinatura do cliente" style="max-width: 100%; border: 1px solid var(--border); border-radius: 8px; margin-top: 6px" />

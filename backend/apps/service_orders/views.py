@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
 from apps.accounts.models import Usuario
+from apps.inventory.movimentos import sincronizar_saida_os
 from apps.notifications.models import Notificacao
 from apps.notifications.utils import notificar, notificar_muitos
 
@@ -187,6 +188,7 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
         torna a ação idempotente para o reenvio da fila offline.)"""
         ordem = self.get_object()
         ja_concluida = ordem.status == OrdemServico.Status.CONCLUIDA
+        relato_no_payload = "relato" in request.data
 
         if not ja_concluida:
             ordem.status = OrdemServico.Status.CONCLUIDA
@@ -217,7 +219,17 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
             if not ja_concluida:
                 self._avisar_conclusao(ordem, request.user)
 
-        return Response(self.get_serializer(ordem).data)
+        dados = self.get_serializer(ordem).data
+        # Baixa de estoque a partir dos materiais do relato. Roda fora da
+        # transação da OS e nunca levanta — se o estoque falhar, a OS continua
+        # concluída. Só sincroniza quando o relato veio no payload (senão uma
+        # reconclusão sem mudança ficaria revertendo/regerando movimento à toa).
+        if relato_no_payload or not ja_concluida:
+            dados["baixa_estoque"] = sincronizar_saida_os(
+                ordem, ordem.relato, usuario=request.user
+            )
+
+        return Response(dados)
 
     def _avisar_conclusao(self, ordem, autor):
         """Avisa o encarregado do técnico e a gestão de que a OS foi concluída.

@@ -12,7 +12,7 @@ Escopo:
 from collections import defaultdict
 from datetime import timedelta
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, F, Q, Sum
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -20,6 +20,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.models import Usuario
+from apps.inventory.models import Material
 from apps.projects.models import Projeto
 from apps.service_orders.models import OrdemServico
 from apps.timeclock.models import RegistroPonto, SolicitacaoPonto
@@ -85,6 +86,17 @@ def painel(request):
     funcionarios = list(_funcionarios(user))
     os_qs = _ordens(user)
 
+    # Estoque abaixo do mínimo (só a gestão cuida de compras).
+    materiais_baixos = (
+        list(
+            Material.objects.filter(
+                ativo=True, estoque_minimo__gt=0, saldo__lt=F("estoque_minimo")
+            ).order_by("descricao")
+        )
+        if user.e_gestao
+        else []
+    )
+
     # --- KPIs ---
     extras, faltantes = _saldo_horas_mes(funcionarios, inicio_mes, hoje - timedelta(days=1))
     # três contagens de OS numa query só (Count com filtro condicional)
@@ -117,6 +129,7 @@ def painel(request):
         "obras_ativas": Projeto.objects.filter(status__in=_OBRAS_ATIVAS).count(),
         "horas_extras_mes_min": extras,
         "horas_faltantes_mes_min": faltantes,
+        "estoque_abaixo_minimo": len(materiais_baixos),
     }
 
     # --- Operação de hoje: ponto + OS em andamento de cada um ---
@@ -288,6 +301,16 @@ def painel(request):
                 "solicitacoes": solicitacoes,
                 "os_sem_tecnico": os_sem_tecnico,
                 "os_paradas": paradas,
+                "estoque_baixo": [
+                    {
+                        "id": m.id,
+                        "descricao": m.descricao,
+                        "saldo": str(m.saldo),
+                        "minimo": str(m.estoque_minimo),
+                        "unidade": m.unidade,
+                    }
+                    for m in materiais_baixos
+                ],
             },
             "os_abertas": os_abertas_lista,
             "produtividade": produtividade,
