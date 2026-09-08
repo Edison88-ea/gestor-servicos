@@ -96,6 +96,9 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    # Corta upload grande demais pelo Content-Length (depois do CORS, para o
+    # 413 chegar ao browser com os cabeçalhos certos).
+    "config.uploads.LimiteTamanhoRequisicaoMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -205,6 +208,11 @@ STORAGES = {
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
+
+# Uploads: nunca mais de 20 arquivos por requisição (a tela de fotos manda uma
+# de cada vez; o resto do sistema não sobe múltiplos). O tamanho de cada
+# arquivo é limitado em config.uploads / config.drf_fields.
+DATA_UPLOAD_MAX_NUMBER_FILES = 20
 
 # Armazenamento das fotos/assinaturas em bucket S3-compatível (Cloudflare R2).
 # Sem R2_BUCKET definido, cai no disco local (dev) — que no plano free do Render

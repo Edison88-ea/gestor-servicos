@@ -90,11 +90,20 @@ async function enviarFoto(etapa, evento) {
   try {
     const foto = await store.adicionarFoto(etapa.id, arquivo)
     etapa.fotos = [foto, ...(etapa.fotos || [])]
-  } catch {
-    erro.value = 'Não foi possível enviar a foto.'
+  } catch (e) {
+    erro.value = motivoUpload(e, 'foto')
   } finally {
     evento.target.value = ''
   }
+}
+
+function motivoUpload(e, oque) {
+  const dados = e?.response?.data
+  if (e?.response?.status === 413) return `O arquivo da ${oque} é grande demais.`
+  const detalhe = dados?.imagem?.[0] || dados?.arquivo?.[0] || dados?.detail
+  return detalhe
+    ? `Não foi possível enviar a ${oque}: ${detalhe}`
+    : `Não foi possível enviar a ${oque}.`
 }
 
 async function enviarPlanta(evento) {
@@ -103,8 +112,8 @@ async function enviarPlanta(evento) {
   try {
     const planta = await store.adicionarPlanta(obra.value.id, arquivo)
     obra.value.plantas = [...(obra.value.plantas || []), planta]
-  } catch {
-    erro.value = 'Não foi possível enviar a planta.'
+  } catch (e) {
+    erro.value = motivoUpload(e, 'planta')
   } finally {
     evento.target.value = ''
   }

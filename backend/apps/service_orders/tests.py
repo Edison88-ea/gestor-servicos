@@ -1,14 +1,18 @@
+import io
 from datetime import datetime
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
+from PIL import Image
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Usuario
 from apps.clients.models import Cliente
 from apps.notifications.models import Notificacao
+from config.uploads import MAX_MB_IMAGEM
 
-from .models import OrdemServico
+from .models import FotoOrdemServico, OrdemServico
 
 
 class ExportacaoComprovanteTests(TestCase):
@@ -189,3 +193,75 @@ class EncarregadoTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         os.refresh_from_db()
         self.assertEqual(os.cliente_id, self.cliente.id)
+
+
+def _jpeg(lado=40, cor=(120, 130, 140)):
+    buf = io.BytesIO()
+    Image.new("RGB", (lado, lado), cor).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+class UploadHardeningTests(TestCase):
+    def setUp(self):
+        self.api = APIClient()
+        self.gestor = Usuario.objects.create_user(
+            username="g", password="x", papel=Usuario.Papel.GESTOR
+        )
+        self.cliente = Cliente.objects.create(nome="ACME", documento="1", telefone="9")
+        self.api.force_authenticate(self.gestor)
+        self.os = OrdemServico.objects.create(
+            cliente=self.cliente, criado_por=self.gestor, tipo_servico="X"
+        )
+
+    def _post_foto(self, conteudo, nome="foto.jpg", tipo="image/jpeg"):
+        arquivo = SimpleUploadedFile(nome, conteudo, content_type=tipo)
+        return self.api.post(
+            f"/api/ordens-servico/{self.os.id}/fotos/",
+            {"imagem": arquivo},
+            format="multipart",
+        )
+
+    def test_foto_valida_passa_e_e_comprimida(self):
+        resp = self._post_foto(_jpeg(), nome="camera.png")
+        self.assertEqual(resp.status_code, 201)
+        foto = FotoOrdemServico.objects.get()
+        # save() re-encoda para .jpg
+        self.assertTrue(foto.imagem.name.endswith(".jpg"))
+
+    def test_imagem_acima_do_limite_e_rejeitada(self):
+        gordo = _jpeg() + b"\x00" * ((MAX_MB_IMAGEM + 1) * 1024 * 1024)
+        resp = self._post_foto(gordo)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("muito grande", str(resp.data).lower())
+        self.assertEqual(FotoOrdemServico.objects.count(), 0)
+
+    def test_decompression_bomb_de_imagem_e_rejeitada(self):
+        from PIL import Image as PILImage
+
+        original = PILImage.MAX_IMAGE_PIXELS
+        PILImage.MAX_IMAGE_PIXELS = 100  # 10x10 já estoura
+        try:
+            resp = self._post_foto(_jpeg(lado=50))
+        finally:
+            PILImage.MAX_IMAGE_PIXELS = original
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(FotoOrdemServico.objects.count(), 0)
+
+    def test_middleware_corta_content_length_gigante(self):
+        from django.http import HttpResponse
+        from django.test import RequestFactory
+
+        from config.uploads import LimiteTamanhoRequisicaoMiddleware
+
+        mw = LimiteTamanhoRequisicaoMiddleware(lambda r: HttpResponse("ok"))
+
+        grande = RequestFactory().post("/api/ordens-servico/1/fotos/")
+        grande.META["CONTENT_LENGTH"] = str(50 * 1024 * 1024)
+        self.assertEqual(mw(grande).status_code, 413)
+
+        ok = RequestFactory().post("/api/ordens-servico/1/fotos/")
+        ok.META["CONTENT_LENGTH"] = str(2 * 1024 * 1024)
+        self.assertEqual(mw(ok).status_code, 200)
+
+        get = RequestFactory().get("/qualquer")
+        self.assertEqual(mw(get).status_code, 200)
