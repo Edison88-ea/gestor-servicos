@@ -198,7 +198,7 @@ onMounted(() => {
       {{ busca || soAbaixo ? 'Nenhum material com esse filtro.' : 'Nenhum material cadastrado no estoque.' }}
     </p>
 
-    <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px">
+    <ul class="grid-cards">
       <li
         v-for="m in lista"
         :key="m.id"

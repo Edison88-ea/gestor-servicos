@@ -107,7 +107,7 @@ onMounted(async () => {
       @click="auth.logout(); $router.push('/login')">Sair</button>
   </div>
 
-  <div class="content">
+  <div class="content estreito">
     <h2>Bater ponto</h2>
 
     <div class="card" style="margin-bottom: 16px">

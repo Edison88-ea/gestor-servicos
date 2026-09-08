@@ -71,7 +71,7 @@ onMounted(() => {
     <p v-if="carregando && !movimentos.length">Carregando...</p>
     <p v-else-if="!movimentos.length" style="color: var(--text-muted)">Nenhuma movimentação com esse filtro.</p>
 
-    <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
+    <ul class="grid-cards">
       <li v-for="mv in movimentos" :key="mv.id" class="card" style="padding: 12px">
         <div style="display: flex; justify-content: space-between; gap: 8px; align-items: baseline">
           <strong>{{ mv.material_descricao }}</strong>

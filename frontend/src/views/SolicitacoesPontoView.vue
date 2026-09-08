@@ -102,7 +102,7 @@ onMounted(carregar)
     <p v-if="store.carregando">Carregando...</p>
     <p v-else-if="store.itens.length === 0" class="card">Nenhuma solicitação encontrada.</p>
 
-    <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px">
+    <ul class="grid-cards">
       <li v-for="s in store.itens" :key="s.id" class="card">
         <div style="display: flex; justify-content: space-between; margin-bottom: 6px">
           <strong>{{ TIPO_ROTULO[s.tipo] }}</strong>

@@ -190,7 +190,7 @@ onMounted(async () => {
 
   <p v-if="erro" style="padding: 16px; color: var(--danger)">{{ erro }}</p>
 
-  <div v-if="obra" class="content">
+  <div v-if="obra" class="content estreito">
     <section class="card" style="margin-bottom: 12px">
       <div style="display: flex; justify-content: space-between; gap: 8px">
         <strong style="font-size: 17px">{{ obra.nome }}</strong>

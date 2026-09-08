@@ -106,7 +106,7 @@ async function enviar() {
     <strong>Ajustar Ponto</strong>
   </div>
 
-  <div class="content">
+  <div class="content estreito">
     <p style="color: var(--text-muted); font-size: 14px; margin-top: 0">
       Use quando esqueceu de bater o ponto ou bateu errado. O ajuste passa pela aprovação da empresa.
     </p>

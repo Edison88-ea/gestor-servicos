@@ -105,7 +105,7 @@ onMounted(carregar)
 
   <p v-if="erro" style="padding: 16px; color: var(--danger)">{{ erro }}</p>
 
-  <div v-else-if="ordem" class="content comprovante">
+  <div v-else-if="ordem" class="content estreito comprovante">
     <header style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px">
       <div>
         <div style="font-size: 18px; font-weight: 700">{{ EMPRESA }}</div>

@@ -85,7 +85,7 @@ onMounted(async () => {
     <strong>Etapas / metas</strong>
   </div>
 
-  <div class="content">
+  <div class="content estreito">
     <p v-if="erro" style="color: var(--danger)">{{ erro }}</p>
     <p v-if="obra" style="color: var(--text-muted); margin-top: 0">{{ obra.nome }}</p>
 

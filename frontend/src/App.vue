@@ -8,6 +8,7 @@ import { useOsOfflineStore } from './stores/osOffline'
 import { useClientesStore } from './stores/clientes'
 import { useOrdensServicoStore } from './stores/ordensServico'
 import MenuLateral from './components/MenuLateral.vue'
+import NavRail from './components/NavRail.vue'
 import PainelNotificacoes from './components/PainelNotificacoes.vue'
 import PwaAtualizacao from './components/PwaAtualizacao.vue'
 import Logo3D from './components/Logo3D.vue'
@@ -111,9 +112,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <NavRail v-if="auth.isAuthenticated" @abrir-notificacoes="notificacoesAbertas = true" />
+
+  <div class="main">
   <div v-if="auth.isAuthenticated" class="app-header">
     <button v-if="podeVoltar" type="button" aria-label="Voltar" style="border: none; background: none; font-size: 22px; padding: 4px 6px" @click="voltar">←</button>
-    <button type="button" aria-label="Menu" style="border: none; background: none; font-size: 20px; padding: 4px 6px" @click="menuAberto = true">☰</button>
+    <button type="button" class="btn-menu" aria-label="Menu" style="border: none; background: none; font-size: 20px; padding: 4px 6px" @click="menuAberto = true">☰</button>
     <Logo3D :tamanho="22" />
     <strong style="font-size: 14px; flex: 1">3D Sistemas</strong>
     <button
@@ -163,6 +167,7 @@ onBeforeUnmount(() => {
     <RouterLink v-else to="/">Ponto</RouterLink>
     <RouterLink to="/ordens-servico">Ordens de Serviço</RouterLink>
   </nav>
+  </div>
 
   <MenuLateral :aberto="menuAberto" @fechar="menuAberto = false" />
   <PainelNotificacoes v-if="auth.isAuthenticated" :aberto="notificacoesAbertas" @fechar="notificacoesAbertas = false" />

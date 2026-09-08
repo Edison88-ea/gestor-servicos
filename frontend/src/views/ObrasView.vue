@@ -85,7 +85,7 @@ onMounted(() => {
       Nenhuma obra {{ filtro ? 'nesse status' : 'cadastrada' }}.
     </p>
 
-    <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px">
+    <ul class="grid-cards">
       <li
         v-for="obra in lista"
         :key="obra.id"

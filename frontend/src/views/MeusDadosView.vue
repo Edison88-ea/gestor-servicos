@@ -30,7 +30,7 @@ function sair() {
     <strong>Meus dados</strong>
   </div>
 
-  <div class="content">
+  <div class="content estreito">
     <p v-if="erro" style="color: var(--danger)">{{ erro }}</p>
     <p v-else-if="!dados" style="color: var(--text-muted)">Carregando...</p>
     <template v-else>
