@@ -288,8 +288,15 @@ async function selecionarFoto(event) {
       const foto = await store.adicionarFoto(props.id, arquivo)
       ordem.value.fotos.push(foto)
     }
-  } catch {
-    erroFoto.value = 'Não foi possível enviar a foto. Verifique a conexão e tente novamente.'
+  } catch (e) {
+    const dados = e?.response?.data
+    const motivo =
+      e?.response?.status === 413
+        ? 'A foto é grande demais.'
+        : dados?.imagem?.[0] || dados?.detail
+    erroFoto.value = motivo
+      ? `Não foi possível enviar a foto: ${motivo}`
+      : 'Não foi possível enviar a foto. Verifique a conexão e tente novamente.'
   } finally {
     enviandoFoto.value = false
     if (inputFotoRef.value) inputFotoRef.value.value = ''

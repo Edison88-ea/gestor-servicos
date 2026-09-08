@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.clients.models import Cliente
+from config.imagens import comprimir_imagem
 
 
 class OrdemServico(models.Model):
@@ -110,6 +111,15 @@ class FotoOrdemServico(models.Model):
 
     def __str__(self):
         return f"Foto de {self.ordem_servico.numero}"
+
+    def save(self, *args, **kwargs):
+        # Comprime só no envio (registro novo). Além de economizar no bucket, o
+        # re-encode neutraliza payload embutido no arquivo original.
+        if self.imagem and not self.pk:
+            nome, comprimida = comprimir_imagem(self.imagem)
+            if comprimida is not None:
+                self.imagem.save(nome, comprimida, save=False)
+        super().save(*args, **kwargs)
 
 
 class ServicoCatalogo(models.Model):

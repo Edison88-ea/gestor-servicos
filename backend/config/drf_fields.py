@@ -1,10 +1,30 @@
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.conf import settings
+from django.template.defaultfilters import filesizeformat
 from rest_framework import serializers
 
+from config.uploads import MAX_MB_ARQUIVO, MAX_MB_IMAGEM
 
-class RelativeImageField(serializers.ImageField):
+
+class _LimiteTamanhoMixin:
+    """Rejeita o upload por tamanho antes de o serializer abrir o arquivo (no
+    caso da imagem, antes de o Pillow tocar nele). Segunda barreira, junto do
+    ``LimiteTamanhoRequisicaoMiddleware``."""
+
+    max_mb = None
+
+    def to_internal_value(self, data):
+        tamanho = getattr(data, "size", None)
+        if tamanho and self.max_mb and tamanho > self.max_mb * 1024 * 1024:
+            raise serializers.ValidationError(
+                f"Arquivo muito grande ({filesizeformat(tamanho)}). "
+                f"O limite é {self.max_mb} MB."
+            )
+        return super().to_internal_value(data)
+
+
+class RelativeImageField(_LimiteTamanhoMixin, serializers.ImageField):
     """Serializa sempre o caminho `/media/<arquivo>` — nunca a URL absoluta do
     storage.
 
@@ -13,7 +33,11 @@ class RelativeImageField(serializers.ImageField):
       misto no celular).
     - Com o storage em R2, `value.url` seria uma URL assinada que expira; o
       caminho `/media/...` é estável, na mesma origem e o service worker do PWA
-      já cacheia para uso offline. A view `serve_media` faz o proxy do bucket."""
+      já cacheia para uso offline. A view `serve_media` faz o proxy do bucket.
+
+    Rejeita imagens acima de ``MAX_MB_IMAGEM``."""
+
+    max_mb = MAX_MB_IMAGEM
 
     def to_representation(self, value):
         if not value:
@@ -21,10 +45,14 @@ class RelativeImageField(serializers.ImageField):
         return f"{settings.MEDIA_URL}{value.name}"
 
 
-class RelativeFileField(serializers.FileField):
+class RelativeFileField(_LimiteTamanhoMixin, serializers.FileField):
     """Igual à ``RelativeImageField``, mas para arquivos quaisquer (ex.: o PDF da
     planta de uma obra). Serializa sempre o caminho estável ``/media/<arquivo>``
-    servido pela API, nunca a URL assinada do bucket."""
+    servido pela API, nunca a URL assinada do bucket.
+
+    Rejeita arquivos acima de ``MAX_MB_ARQUIVO``."""
+
+    max_mb = MAX_MB_ARQUIVO
 
     def to_representation(self, value):
         if not value:
