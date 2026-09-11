@@ -20,6 +20,17 @@ function novoTmpId() {
   return `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
+// Antes, uma falha sem resposta HTTP (timeout, conexão derrubada) ficava muda
+// pra sempre: o item era tratado como "sem rede" e reenfileirado em silêncio,
+// então o técnico via a OS presa sem nenhuma explicação. Agora toda falha vira
+// uma mensagem visível — o reenvio automático continua acontecendo do mesmo
+// jeito, só que com o motivo à mostra.
+function mensagemFalha(e) {
+  if (e.response) return e.response.data?.detail || `Erro ${e.response.status} ao enviar`
+  if (e.code === 'ECONNABORTED') return 'Tempo esgotado ao enviar — foto ou assinatura grande demais para o sinal atual'
+  return 'Falha de conexão ao enviar — tentando de novo automaticamente'
+}
+
 // Uma OS criada offline: guarda tudo que for preciso pra recriar o ciclo
 // inteiro quando o sinal voltar.
 function osLocalVazia(dados) {
@@ -146,14 +157,14 @@ export const useOsOfflineStore = defineStore('osOffline', {
       if (!this.locais.length && !this.acoesPendentes.length) return
       this.sincronizando = true
       try {
+        // _enviarOsLocal/_enviarAcao tratam suas próprias falhas (erroSync) e
+        // não lançam — uma OS travada não pode impedir as outras de subir.
         for (const os of [...this.locais]) {
           await this._enviarOsLocal(os)
         }
         for (const acao of [...this.acoesPendentes]) {
           await this._enviarAcao(acao)
         }
-      } catch (e) {
-        // erro de rede: para e tenta de novo na próxima
       } finally {
         this.sincronizando = false
       }
@@ -219,12 +230,8 @@ export const useOsOfflineStore = defineStore('osOffline', {
         this.locais = this.locais.filter((o) => o.id !== os.id)
         this._persistir()
       } catch (e) {
-        if (e.response) {
-          os.erroSync = e.response.data?.detail || `Erro ${e.response.status} ao enviar`
-          this._persistir()
-        } else {
-          throw e // rede: interrompe a sincronização
-        }
+        os.erroSync = mensagemFalha(e)
+        this._persistir()
       }
     },
 
@@ -254,12 +261,8 @@ export const useOsOfflineStore = defineStore('osOffline', {
         this.acoesPendentes = this.acoesPendentes.filter((a) => a !== acao)
         this._persistir()
       } catch (e) {
-        if (e.response) {
-          acao.erroSync = e.response.data?.detail || `Erro ${e.response.status}`
-          this._persistir()
-        } else {
-          throw e
-        }
+        acao.erroSync = mensagemFalha(e)
+        this._persistir()
       }
     },
 
