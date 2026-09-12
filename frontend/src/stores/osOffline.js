@@ -63,11 +63,26 @@ export const useOsOfflineStore = defineStore('osOffline', {
   },
 
   actions: {
+    // Carrega as duas filas em bloco: ou as duas entram no state e a store
+    // fica iniciada, ou nada é tocado e `iniciado` continua false (o próximo
+    // gatilho de sincronização chama de novo). Carregar uma e falhar na outra
+    // com `iniciado = true` era a perda de dado do incidente: a fila que não
+    // carregou ficava `[]` em memória e a primeira gravação seguinte
+    // (`_persistir`, que grava as duas chaves juntas) apagava do disco o que
+    // ainda não tinha subido. Nunca lança — quem chama faz fire-and-forget.
     async iniciar() {
       if (this.iniciado) return
-      this.iniciado = true
-      this.locais = await carregarFila(KEY_LOCAIS)
-      this.acoesPendentes = await carregarFila(KEY_ACOES)
+      try {
+        const [locais, acoes] = await Promise.all([
+          carregarFila(KEY_LOCAIS),
+          carregarFila(KEY_ACOES),
+        ])
+        this.locais = locais
+        this.acoesPendentes = acoes
+        this.iniciado = true
+      } catch (e) {
+        console.warn('[osOffline] falha ao carregar a fila offline; tentando de novo no próximo ciclo', e)
+      }
     },
 
     async _persistir() {

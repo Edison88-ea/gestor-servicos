@@ -51,12 +51,24 @@ export const useClientesStore = defineStore('clientes', {
     iniciado: false,
   }),
   actions: {
+    // Só marca `iniciado` depois de a fila estar de fato em memória: se a
+    // leitura do IndexedDB falhar, a store continua não-iniciada (o próximo
+    // gatilho de sincronização tenta de novo) em vez de achar que a fila está
+    // vazia e sobrescrever no disco, com `[]`, clientes que nunca subiram.
+    // Nunca lança — quem chama faz fire-and-forget.
     async iniciar() {
       if (this.iniciado) return
-      this.iniciado = true
-      this.pendentes = await carregarFila(PENDENTES_KEY)
-      // um cliente pendente carregado agora também precisa aparecer na busca
-      this.todos = comPendentes(this.todos, this.pendentes)
+      try {
+        // (uma chave só aqui — os outros dados da store são cache de leitura,
+        // não fila; por isso não há Promise.all como nas outras duas stores)
+        const pendentes = await carregarFila(PENDENTES_KEY)
+        this.pendentes = pendentes
+        // um cliente pendente carregado agora também precisa aparecer na busca
+        this.todos = comPendentes(this.todos, this.pendentes)
+        this.iniciado = true
+      } catch (e) {
+        console.warn('[clientes] falha ao carregar a fila de pendentes; tentando de novo no próximo ciclo', e)
+      }
     },
 
     async _persistir() {
@@ -141,28 +153,50 @@ export const useClientesStore = defineStore('clientes', {
     async sincronizar() {
       if (this.sincronizando || !navigator.onLine || !this.pendentes.length) return
       this.sincronizando = true
-      const osOffline = useOsOfflineStore()
-      const restantes = []
-      // Percorre todos os pendentes mesmo se algum falhar: um cliente travado
-      // não pode fazer os outros (e as OS que dependem deles) ficarem presos
-      // sem nunca serem tentados de novo.
-      for (const local of this.pendentes) {
-        try {
-          const { id, _local, erroSync, ...payload } = local
-          const { data } = await client.post('/clientes/', payload)
-          await this._substituir(local.id, data)
-          // qualquer OS criada offline que aponta para este cliente tmp
-          await osOffline.trocarClienteTmp(local.id, data.id)
-        } catch (e) {
-          local.erroSync = e.response
-            ? e.response.data?.detail || `Erro ${e.response.status}`
-            : 'Falha de conexão ao enviar — tentando de novo automaticamente'
-          restantes.push(local)
+      try {
+        const osOffline = useOsOfflineStore()
+        const restantes = []
+        // Percorre todos os pendentes mesmo se algum falhar: um cliente travado
+        // não pode fazer os outros (e as OS que dependem deles) ficarem presos
+        // sem nunca serem tentados de novo.
+        for (const local of this.pendentes) {
+          let criado = null
+          // O try/catch envolve SÓ a chamada de rede. Antes ele cobria também
+          // a escrita local que vem depois: se o POST passava e a gravação
+          // local falhava, a falha era diagnosticada como "falha de conexão" e
+          // o cliente voltava para a fila — ou seja, era criado de novo no
+          // servidor no ciclo seguinte (duplicata), e o `trocarClienteTmp`
+          // nunca rodava (a OS ficava presa no id temporário para sempre).
+          try {
+            const { id, _local, erroSync, ...payload } = local
+            const { data } = await client.post('/clientes/', payload)
+            criado = data
+          } catch (e) {
+            local.erroSync = e.response
+              ? e.response.data?.detail || `Erro ${e.response.status}`
+              : 'Falha de conexão ao enviar — tentando de novo automaticamente'
+            restantes.push(local)
+            continue
+          }
+          // POST aceito: o cliente existe no servidor. Daqui pra frente ele
+          // nunca volta para a fila. As escritas locais abaixo são contidas
+          // (filaStorage não lança), mas se alguma falhasse mesmo assim, o
+          // certo é perder a atualização local — não reenviar o cadastro.
+          try {
+            await this._substituir(local.id, criado)
+            // qualquer OS criada offline que aponta para este cliente tmp
+            await osOffline.trocarClienteTmp(local.id, criado.id)
+          } catch (e) {
+            console.warn('[clientes] cliente enviado, mas a atualização local falhou', e)
+          }
         }
+        this.pendentes = restantes
+        await this._persistir()
+      } finally {
+        // Em `finally`: uma exceção no meio do laço deixaria a trava presa em
+        // true e a sincronização de clientes morta pelo resto da sessão.
+        this.sincronizando = false
       }
-      this.pendentes = restantes
-      await this._persistir()
-      this.sincronizando = false
     },
 
     async carregarTodosParaCache() {

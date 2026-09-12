@@ -66,11 +66,24 @@ export const usePontoStore = defineStore('ponto', {
     },
   },
   actions: {
+    // Fila e rejeitados entram no state em bloco — ver o comentário longo em
+    // osOffline#iniciar(): carregar uma e falhar na outra deixando
+    // `iniciado = true` faria a próxima gravação apagar do disco a chave que
+    // não carregou. Nunca lança; se falhar, `iniciado` continua false e o
+    // próximo gatilho de sincronização tenta de novo.
     async iniciar() {
       if (this.iniciado) return
-      this.iniciado = true
-      this.filaOffline = await carregarFila(QUEUE_KEY)
-      this.rejeitados = await carregarFila(REJEITADOS_KEY)
+      try {
+        const [fila, rejeitados] = await Promise.all([
+          carregarFila(QUEUE_KEY),
+          carregarFila(REJEITADOS_KEY),
+        ])
+        this.filaOffline = fila
+        this.rejeitados = rejeitados
+        this.iniciado = true
+      } catch (e) {
+        console.warn('[ponto] falha ao carregar a fila offline; tentando de novo no próximo ciclo', e)
+      }
     },
 
     async _persistirFila() {
@@ -137,59 +150,66 @@ export const usePontoStore = defineStore('ponto', {
       if (this.sincronizando || this.filaOffline.length === 0) return
       this.sincronizando = true
 
-      // Envia em ordem cronológica (a fila pode ter batidas fora de ordem se
-      // alguma foi reenfileirada depois de uma falha).
-      const pendentes = [...this.filaOffline].sort(
-        (a, b) => new Date(a.registrado_em) - new Date(b.registrado_em),
-      )
-
+      // Declarado fora do try porque o `if (restantes.length === 0)` no fim
+      // (recarregar as batidas do servidor) é lido depois do finally.
       const restantes = []
-      let servidorIndisponivel = false
+      try {
+        // Envia em ordem cronológica (a fila pode ter batidas fora de ordem se
+        // alguma foi reenfileirada depois de uma falha).
+        const pendentes = [...this.filaOffline].sort(
+          (a, b) => new Date(a.registrado_em) - new Date(b.registrado_em),
+        )
 
-      for (const registro of pendentes) {
-        if (servidorIndisponivel) {
-          restantes.push(registro)
-          continue
-        }
-        try {
-          await client.post('/registros-ponto/', registro)
-        } catch (error) {
-          if (deveManterNaFila(error)) {
-            // Rede caiu de novo ou backend indisponível: mantém esta e todas as
-            // seguintes, tenta tudo de novo na próxima. NUNCA descarta aqui.
-            restantes.push({
-              ...registro,
-              erroSync: error.response
-                ? `Erro ${error.response.status} — tentando de novo automaticamente`
-                : 'Falha de conexão ao enviar — tentando de novo automaticamente',
-            })
-            servidorIndisponivel = true
-          } else if (error.response?.data?.duplicado) {
-            // Já chegou ao servidor por outro caminho (Background Sync do
-            // service worker, uma sincronização anterior que caiu antes de
-            // atualizar a fila local). Não é recusa — só descarta.
-          } else {
-            // 4xx: recusa real. Não some calado — vai para "rejeitados".
-            // `tipo` vem como string (validar_sequencia_ponto) ou lista (erro
-            // de campo do serializer) dependendo de quem recusou.
-            const erroTipo = error.response?.data?.tipo
-            const motivo =
-              (Array.isArray(erroTipo) ? erroTipo[0] : erroTipo) ||
-              error.response?.data?.detail ||
-              'Batida recusada pelo servidor.'
-            this.rejeitados.push({
-              ...registro,
-              motivo,
-              rejeitado_em: new Date().toISOString(),
-            })
-            await this._persistirRejeitados()
+        let servidorIndisponivel = false
+
+        for (const registro of pendentes) {
+          if (servidorIndisponivel) {
+            restantes.push(registro)
+            continue
+          }
+          try {
+            await client.post('/registros-ponto/', registro)
+          } catch (error) {
+            if (deveManterNaFila(error)) {
+              // Rede caiu de novo ou backend indisponível: mantém esta e todas
+              // as seguintes, tenta tudo de novo na próxima. NUNCA descarta.
+              restantes.push({
+                ...registro,
+                erroSync: error.response
+                  ? `Erro ${error.response.status} — tentando de novo automaticamente`
+                  : 'Falha de conexão ao enviar — tentando de novo automaticamente',
+              })
+              servidorIndisponivel = true
+            } else if (error.response?.data?.duplicado) {
+              // Já chegou ao servidor por outro caminho (Background Sync do
+              // service worker, uma sincronização anterior que caiu antes de
+              // atualizar a fila local). Não é recusa — só descarta.
+            } else {
+              // 4xx: recusa real. Não some calado — vai para "rejeitados".
+              // `tipo` vem como string (validar_sequencia_ponto) ou lista (erro
+              // de campo do serializer) dependendo de quem recusou.
+              const erroTipo = error.response?.data?.tipo
+              const motivo =
+                (Array.isArray(erroTipo) ? erroTipo[0] : erroTipo) ||
+                error.response?.data?.detail ||
+                'Batida recusada pelo servidor.'
+              this.rejeitados.push({
+                ...registro,
+                motivo,
+                rejeitado_em: new Date().toISOString(),
+              })
+              await this._persistirRejeitados()
+            }
           }
         }
-      }
 
-      this.filaOffline = restantes
-      await this._persistirFila()
-      this.sincronizando = false
+        this.filaOffline = restantes
+        await this._persistirFila()
+      } finally {
+        // Em `finally`: uma exceção no meio do laço deixaria a trava presa em
+        // true e a sincronização do ponto morta pelo resto da sessão.
+        this.sincronizando = false
+      }
 
       if (restantes.length === 0) {
         try {

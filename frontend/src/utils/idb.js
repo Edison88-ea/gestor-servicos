@@ -29,7 +29,19 @@ function abrirCru() {
 }
 
 function abrir() {
-  if (!dbPromise) dbPromise = abrirCru()
+  if (!dbPromise) {
+    const tentativa = abrirCru()
+    dbPromise = tentativa
+    // Uma abertura que falha NÃO pode desligar o IndexedDB pelo resto da
+    // sessão. O caso real: outra aba ainda segura a versão antiga do banco, o
+    // `onblocked` dispara e rejeita — mas segundos depois aquela aba recarrega
+    // e a abertura passaria. Guardar a promise rejeitada faria toda chamada
+    // seguinte reusar a mesma rejeição para sempre; descartando-a, a próxima
+    // chamada tenta de novo do zero.
+    tentativa.catch(() => {
+      if (dbPromise === tentativa) dbPromise = null
+    })
+  }
   return dbPromise
 }
 
