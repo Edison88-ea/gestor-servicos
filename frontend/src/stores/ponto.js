@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import client from '../api/client'
 import { dataLocalISO } from '../utils/tempo'
 import { arredondarCoord, arredondarMetros } from '../utils/geo'
+import { carregarFila, salvarFila } from '../utils/filaStorage'
 
 function ontemISO() {
   const d = new Date()
@@ -42,12 +43,13 @@ export const usePontoStore = defineStore('ponto', {
     // para saber se há jornada que virou a noite, e o técnico precisa ver o
     // que já bateu mesmo sem sinal.
     registrosRecentes: carregar(RECENTES_KEY),
-    filaOffline: carregar(QUEUE_KEY),
+    filaOffline: [],
     // Batidas que o servidor recusou (4xx — sequência inválida, etc.). Ficam
     // visíveis para o funcionário em vez de sumir caladas; ele pode abrir uma
     // solicitação de ajuste a partir daí.
-    rejeitados: carregar(REJEITADOS_KEY),
+    rejeitados: [],
     sincronizando: false,
+    iniciado: false,
   }),
   getters: {
     // Batidas de hoje para a lista "Registros de hoje" — inclui as que ainda
@@ -64,6 +66,21 @@ export const usePontoStore = defineStore('ponto', {
     },
   },
   actions: {
+    async iniciar() {
+      if (this.iniciado) return
+      this.iniciado = true
+      this.filaOffline = await carregarFila(QUEUE_KEY)
+      this.rejeitados = await carregarFila(REJEITADOS_KEY)
+    },
+
+    async _persistirFila() {
+      await salvarFila(QUEUE_KEY, this.filaOffline)
+    },
+
+    async _persistirRejeitados() {
+      await salvarFila(REJEITADOS_KEY, this.rejeitados)
+    },
+
     async carregarRegistrosHoje() {
       try {
         const { data } = await client.get('/registros-ponto/', {
@@ -77,13 +94,13 @@ export const usePontoStore = defineStore('ponto', {
       }
     },
 
-    _enfileirar(registro) {
+    async _enfileirar(registro) {
       const jaTem = this.filaOffline.some(
         (r) => r.tipo === registro.tipo && r.registrado_em === registro.registrado_em,
       )
       if (!jaTem) {
         this.filaOffline.push(registro)
-        salvar(QUEUE_KEY, this.filaOffline)
+        await this._persistirFila()
       }
     },
 
@@ -109,7 +126,7 @@ export const usePontoStore = defineStore('ponto', {
         return 'enviado'
       } catch (error) {
         if (deveManterNaFila(error)) {
-          this._enfileirar({ ...registro, origem_offline: true })
+          await this._enfileirar({ ...registro, origem_offline: true })
           return 'na_fila'
         }
         throw error
@@ -140,7 +157,12 @@ export const usePontoStore = defineStore('ponto', {
           if (deveManterNaFila(error)) {
             // Rede caiu de novo ou backend indisponível: mantém esta e todas as
             // seguintes, tenta tudo de novo na próxima. NUNCA descarta aqui.
-            restantes.push(registro)
+            restantes.push({
+              ...registro,
+              erroSync: error.response
+                ? `Erro ${error.response.status} — tentando de novo automaticamente`
+                : 'Falha de conexão ao enviar — tentando de novo automaticamente',
+            })
             servidorIndisponivel = true
           } else if (error.response?.data?.duplicado) {
             // Já chegou ao servidor por outro caminho (Background Sync do
@@ -160,13 +182,13 @@ export const usePontoStore = defineStore('ponto', {
               motivo,
               rejeitado_em: new Date().toISOString(),
             })
-            salvar(REJEITADOS_KEY, this.rejeitados)
+            await this._persistirRejeitados()
           }
         }
       }
 
       this.filaOffline = restantes
-      salvar(QUEUE_KEY, restantes)
+      await this._persistirFila()
       this.sincronizando = false
 
       if (restantes.length === 0) {
@@ -178,9 +200,9 @@ export const usePontoStore = defineStore('ponto', {
       }
     },
 
-    descartarRejeitado(indice) {
+    async descartarRejeitado(indice) {
       this.rejeitados.splice(indice, 1)
-      salvar(REJEITADOS_KEY, this.rejeitados)
+      await this._persistirRejeitados()
     },
 
     // Devolve uma batida recusada para a fila (a recusa pode ter sido corrigida
@@ -188,9 +210,9 @@ export const usePontoStore = defineStore('ponto', {
     async reenviarRejeitado(indice) {
       const [item] = this.rejeitados.splice(indice, 1)
       if (!item) return
-      salvar(REJEITADOS_KEY, this.rejeitados)
+      await this._persistirRejeitados()
       const { motivo, rejeitado_em, ...registro } = item
-      this._enfileirar(registro)
+      await this._enfileirar(registro)
       await this.sincronizarFila()
     },
 
