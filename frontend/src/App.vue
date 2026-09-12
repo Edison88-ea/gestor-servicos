@@ -35,14 +35,21 @@ function voltar() {
   else router.push({ name: ehGestao.value ? 'painel-gestor' : 'ponto' })
 }
 let intervaloNotificacoes = null
+let intervaloSincronizacao = null
+let sincronizando = false
 
 async function sincronizarTudo() {
-  if (!navigator.onLine || !auth.isAuthenticated) return
-  ponto.sincronizarFila()
-  // clientes primeiro: uma OS criada offline pode apontar para um cliente
-  // criado offline, que precisa ganhar id real antes de a OS subir.
-  await clientes.sincronizar()
-  osOffline.sincronizar()
+  if (sincronizando || !navigator.onLine || !auth.isAuthenticated) return
+  sincronizando = true
+  try {
+    ponto.sincronizarFila()
+    // clientes primeiro: uma OS criada offline pode apontar para um cliente
+    // criado offline, que precisa ganhar id real antes de a OS subir.
+    await clientes.sincronizar()
+    await osOffline.sincronizar()
+  } finally {
+    sincronizando = false
+  }
 }
 
 function atualizarStatusRede() {
@@ -63,6 +70,10 @@ function pararPollNotificacoes() {
     clearInterval(intervaloNotificacoes)
     intervaloNotificacoes = null
   }
+  if (intervaloSincronizacao) {
+    clearInterval(intervaloSincronizacao)
+    intervaloSincronizacao = null
+  }
 }
 
 function iniciarPollNotificacoes() {
@@ -70,8 +81,8 @@ function iniciarPollNotificacoes() {
   notificacoes.atualizarContagem()
   intervaloNotificacoes = setInterval(() => {
     notificacoes.atualizarContagem()
-    sincronizarTudo() // reaproveita o tick para reprocessar a fila offline
   }, 60000)
+  intervaloSincronizacao = setInterval(sincronizarTudo, 20000)
 }
 
 onMounted(() => {
@@ -83,8 +94,9 @@ onMounted(() => {
 // Liga/desliga o poll de notificações conforme o login, sem depender de reload.
 watch(
   () => auth.isAuthenticated,
-  (autenticado) => {
+  async (autenticado) => {
     if (autenticado) {
+      await Promise.all([osOffline.iniciar(), clientes.iniciar(), ponto.iniciar()])
       sincronizarTudo()
       if (navigator.onLine) {
         auth.atualizarPerfil()
@@ -141,14 +153,14 @@ onBeforeUnmount(() => {
       ({{ osOffline.pendentes + ponto.filaOffline.length }} pendente(s))
     </template>
   </div>
-  <div
+  <RouterLink
     v-else-if="osOffline.temErro"
+    to="/pendencias"
     class="offline-banner"
-    style="background: var(--danger); cursor: pointer"
-    @click="osOffline.sincronizar()"
+    style="background: var(--danger); display: block; text-decoration: none; color: inherit"
   >
-    Alguns envios falharam — toque para tentar de novo
-  </div>
+    Alguns envios falharam — toque para ver
+  </RouterLink>
   <div
     v-else-if="osOffline.sincronizando || ponto.sincronizando"
     class="offline-banner"
@@ -156,9 +168,14 @@ onBeforeUnmount(() => {
   >
     Sincronizando…
   </div>
-  <div v-else-if="osOffline.pendentes || ponto.filaOffline.length" class="offline-banner" style="background: var(--accent)">
-    {{ osOffline.pendentes + ponto.filaOffline.length }} item(ns) aguardando envio
-  </div>
+  <RouterLink
+    v-else-if="osOffline.pendentes || ponto.filaOffline.length"
+    to="/pendencias"
+    class="offline-banner"
+    style="background: var(--accent); display: block; text-decoration: none; color: inherit; cursor: pointer"
+  >
+    {{ osOffline.pendentes + ponto.filaOffline.length }} item(ns) aguardando envio — toque pra ver ou tentar agora
+  </RouterLink>
 
   <RouterView />
 
