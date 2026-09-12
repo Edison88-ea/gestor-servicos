@@ -108,6 +108,14 @@ O `idb.js` atual só tem um object store (`blobs`, versão 1 do banco). Esta tas
 
 ```js
 // frontend/src/utils/idb.test.js
+// @vitest-environment node
+//
+// Este arquivo roda em Node puro, não em jsdom (diferente do padrão do
+// projeto). Motivo: o Blob do jsdom não é reconhecido pelo fake-indexeddb —
+// grava algo, mas a leitura de volta vem como `{}` em vez do Blob de
+// verdade. O Blob nativo do Node funciona corretamente com o
+// fake-indexeddb. `filaStore`/`blobStore` não usam nenhuma API exclusiva de
+// DOM, então rodar em Node aqui não perde cobertura nenhuma.
 import { beforeEach, describe, expect, it } from 'vitest'
 import { blobStore, filaStore } from './idb'
 
