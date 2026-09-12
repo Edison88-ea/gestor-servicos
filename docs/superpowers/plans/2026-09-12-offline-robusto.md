@@ -396,10 +396,17 @@ vi.mock('../api/client', () => ({
 import client from '../api/client'
 import { useOsOfflineStore } from './osOffline'
 
+// navigator.onLine é getter-only em jsdom — Object.defineProperty é a forma
+// confiável de sobrescrever em teste (atribuição direta pode ser ignorada
+// em silêncio dependendo da versão do jsdom).
+function definirOnline(valor) {
+  Object.defineProperty(navigator, 'onLine', { value: valor, configurable: true })
+}
+
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
-  navigator.onLine = true // eslint-disable-line
+  definirOnline(true)
 })
 
 describe('osOffline — durabilidade', () => {
@@ -639,11 +646,18 @@ vi.mock('./osOffline', () => ({
 import client from '../api/client'
 import { useClientesStore } from './clientes'
 
+// navigator.onLine é getter-only em jsdom — Object.defineProperty é a forma
+// confiável de sobrescrever em teste (atribuição direta pode ser ignorada
+// em silêncio dependendo da versão do jsdom).
+function definirOnline(valor) {
+  Object.defineProperty(navigator, 'onLine', { value: valor, configurable: true })
+}
+
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   localStorage.clear()
-  navigator.onLine = true // eslint-disable-line
+  definirOnline(true)
 })
 
 describe('clientes — durabilidade e fila', () => {
@@ -654,7 +668,7 @@ describe('clientes — durabilidade e fila', () => {
   })
 
   it('criar offline enfileira e persiste entre instâncias da store', async () => {
-    navigator.onLine = false // eslint-disable-line
+    definirOnline(false)
 
     const store1 = useClientesStore()
     await store1.iniciar()
@@ -669,7 +683,7 @@ describe('clientes — durabilidade e fila', () => {
   })
 
   it('um cliente pendente que falha sem resposta HTTP não trava os outros da fila', async () => {
-    navigator.onLine = true // eslint-disable-line
+    definirOnline(true)
     const store = useClientesStore()
     await store.iniciar()
 
