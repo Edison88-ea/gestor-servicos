@@ -1,5 +1,8 @@
 import { computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { useOsOfflineStore } from '../stores/osOffline'
+import { useClientesStore } from '../stores/clientes'
+import { usePontoStore } from '../stores/ponto'
 
 const GESTAO = ['GESTOR', 'RH', 'ADMIN']
 const ESTOQUE = ['GESTOR', 'ADMIN']
@@ -11,6 +14,9 @@ const ESTOQUE = ['GESTOR', 'ADMIN']
  */
 export function useNavGroups() {
   const auth = useAuthStore()
+  const osOffline = useOsOfflineStore()
+  const clientes = useClientesStore()
+  const ponto = usePontoStore()
 
   return computed(() => {
     const papel = auth.user?.papel
@@ -47,10 +53,13 @@ export function useNavGroups() {
       })
     }
 
+    const pendencias = osOffline.pendentes + clientes.pendentes.length + ponto.filaOffline.length
+
     grupos.push({
       titulo: 'Operação',
       itens: [
         { rotulo: 'Ordens de serviço', to: '/ordens-servico' },
+        { rotulo: 'Pendências', to: '/pendencias', contador: pendencias || null },
         { rotulo: 'Obras', to: '/obras' },
         ...(podeEstoque ? [{ rotulo: 'Estoque', to: '/estoque' }] : []),
         { rotulo: 'Clientes', to: '/clientes' },
