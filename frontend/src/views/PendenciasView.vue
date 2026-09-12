@@ -38,7 +38,7 @@ const itens = computed(() => {
   }
   for (const r of ponto.filaOffline) {
     lista.push({
-      chave: `ponto-${r.registrado_em}`,
+      chave: `ponto-${r.tipo}-${r.registrado_em}`,
       titulo: `Ponto — ${r.tipo}`,
       detalhe: new Date(r.registrado_em).toLocaleString('pt-BR'),
       erro: r.erroSync || '',
@@ -46,7 +46,7 @@ const itens = computed(() => {
   }
   for (const r of ponto.rejeitados) {
     lista.push({
-      chave: `ponto-rejeitado-${r.registrado_em}`,
+      chave: `ponto-rejeitado-${r.tipo}-${r.registrado_em}`,
       titulo: `Ponto recusado — ${r.tipo}`,
       detalhe: new Date(r.registrado_em).toLocaleString('pt-BR'),
       erro: r.motivo || 'Recusado pelo servidor',
