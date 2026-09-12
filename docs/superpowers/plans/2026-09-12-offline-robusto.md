@@ -304,6 +304,18 @@ describe('carregarFila / salvarFila', () => {
     expect(valor).toEqual([{ id: 1 }, { id: 2 }])
   })
 
+  it('salva um array reativo (Proxy) sem lançar DataCloneError', async () => {
+    // As stores Pinia guardam a fila em arrays reativos (Proxy) — o
+    // IndexedDB nativo não sabe cloná-los diretamente. Simula isso com
+    // `reactive()` do Vue, sem precisar de uma store Pinia inteira aqui.
+    const { reactive } = await import('vue')
+    const chave = 'chave-reativa-' + Math.random()
+    const arrayReativo = reactive([{ id: 1 }])
+    await salvarFila(chave, arrayReativo)
+    const valor = await carregarFila(chave)
+    expect(valor).toEqual([{ id: 1 }])
+  })
+
   it('migra automaticamente um valor antigo do localStorage, uma vez só', async () => {
     const chave = 'chave-migracao-' + Math.random()
     localStorage.setItem(chave, JSON.stringify([{ id: 'antigo' }]))
@@ -359,15 +371,19 @@ export async function carregarFila(chave, valorPadrao = []) {
   return migrado
 }
 
+// Arrays/objetos de uma store Pinia são Proxies reativos — o algoritmo de
+// structured clone do IndexedDB não sabe cloná-los (DataCloneError), mesmo
+// que os dados por trás sejam simples. O round-trip por JSON os reduz a
+// dados planos antes de gravar, sem exigir que quem chama saiba disso.
 export async function salvarFila(chave, valor) {
-  await filaStore.definir(chave, valor)
+  await filaStore.definir(chave, JSON.parse(JSON.stringify(valor)))
 }
 ```
 
 - [ ] **Step 4: Rodar e confirmar que passa**
 
 Run: `cd frontend && npm test -- filaStorage.test.js`
-Expected: 4 testes, PASS.
+Expected: 5 testes, PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -382,7 +398,7 @@ git commit -m "feat: helper de fila offline em IndexedDB com migração automát
 
 **Files:**
 - Modify: `frontend/src/stores/osOffline.js`
-- Modify: `frontend/src/stores/ordensServico.js:107,127,143,184` (adicionar `await` nas chamadas a `enfileirarAcao`)
+- Modify: `frontend/src/stores/ordensServico.js:107,127,143,184,218` (adicionar `await` nas chamadas a `enfileirarAcao`)
 - Modify: `frontend/src/stores/clientes.js:146` (adicionar `await` na chamada a `trocarClienteTmp`)
 - Test: `frontend/src/stores/osOffline.test.js`
 
@@ -403,6 +419,7 @@ vi.mock('../api/client', () => ({
 
 import client from '../api/client'
 import { useOsOfflineStore } from './osOffline'
+import { filaStore } from '../utils/idb'
 
 // navigator.onLine é getter-only em jsdom — Object.defineProperty é a forma
 // confiável de sobrescrever em teste (atribuição direta pode ser ignorada
@@ -411,10 +428,15 @@ function definirOnline(valor) {
   Object.defineProperty(navigator, 'onLine', { value: valor, configurable: true })
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   definirOnline(true)
+  // fake-indexeddb persiste entre testes do mesmo arquivo (só o Pinia é
+  // resetado acima) — sem isto, um item deixado por um teste anterior
+  // vaza para o próximo via iniciar().
+  await filaStore.remover('os_locais')
+  await filaStore.remover('os_acoes_pendentes')
 })
 
 describe('osOffline — durabilidade', () => {
@@ -579,7 +601,7 @@ Em `_enviarOsLocal` e `_enviarAcao` (já `async`), trocar **todas** as ocorrênc
 
 - [ ] **Step 4: Atualizar os chamadores que não fazem `return`/`await`**
 
-Em `frontend/src/stores/ordensServico.js`, adicionar `await` antes das 4 chamadas a `offline.enfileirarAcao(...)` (linhas 107, 127, 143, 184 do arquivo atual). Exemplo (linha 107, dentro de `iniciar()`):
+Em `frontend/src/stores/ordensServico.js`, adicionar `await` antes das 5 chamadas a `offline.enfileirarAcao(...)` (linhas 107, 127, 143, 184 e 218 do arquivo atual — a de `adicionarFoto()`, linha 218, segue o mesmo padrão das outras 4 e precisa do mesmo tratamento). Exemplo (linha 107, dentro de `iniciar()`):
 
 ```js
       } catch (erro) {
@@ -591,7 +613,7 @@ Em `frontend/src/stores/ordensServico.js`, adicionar `await` antes das 4 chamada
       }
 ```
 
-(o mesmo padrão para as chamadas em `pausar()`, `retomar()` e `concluir()`.)
+(o mesmo padrão para as chamadas em `pausar()`, `retomar()`, `concluir()` e `adicionarFoto()`.)
 
 Em `frontend/src/stores/clientes.js:146`, trocar:
 
@@ -653,6 +675,7 @@ vi.mock('./osOffline', () => ({
 
 import client from '../api/client'
 import { useClientesStore } from './clientes'
+import { filaStore } from '../utils/idb'
 
 // navigator.onLine é getter-only em jsdom — Object.defineProperty é a forma
 // confiável de sobrescrever em teste (atribuição direta pode ser ignorada
@@ -661,11 +684,14 @@ function definirOnline(valor) {
   Object.defineProperty(navigator, 'onLine', { value: valor, configurable: true })
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   localStorage.clear()
   definirOnline(true)
+  // fake-indexeddb persiste entre testes do mesmo arquivo — sem isto, um
+  // pendente deixado por um teste anterior vaza para o próximo via iniciar().
+  await filaStore.remover('clientes_pendentes')
 })
 
 describe('clientes — durabilidade e fila', () => {
@@ -892,11 +918,16 @@ vi.mock('../api/client', () => ({
 
 import client from '../api/client'
 import { usePontoStore } from './ponto'
+import { filaStore } from '../utils/idb'
 
-beforeEach(() => {
+beforeEach(async () => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   localStorage.clear()
+  // fake-indexeddb persiste entre testes do mesmo arquivo — sem isto, uma
+  // batida deixada por um teste anterior vaza para o próximo via iniciar().
+  await filaStore.remover('ponto_fila_offline')
+  await filaStore.remover('ponto_rejeitados')
 })
 
 describe('ponto — durabilidade da fila', () => {
