@@ -22,6 +22,10 @@ export async function carregarFila(chave, valorPadrao = []) {
   return migrado
 }
 
+// Arrays/objetos de uma store Pinia são Proxies reativos — o algoritmo de
+// structured clone do IndexedDB não sabe cloná-los (DataCloneError), mesmo
+// que os dados por trás sejam simples. O round-trip por JSON os reduz a
+// dados planos antes de gravar, sem exigir que quem chama saiba disso.
 export async function salvarFila(chave, valor) {
-  await filaStore.definir(chave, valor)
+  await filaStore.definir(chave, JSON.parse(JSON.stringify(valor)))
 }

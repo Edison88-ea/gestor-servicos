@@ -14,6 +14,18 @@ describe('carregarFila / salvarFila', () => {
     expect(valor).toEqual([{ id: 1 }, { id: 2 }])
   })
 
+  it('salva um array reativo (Proxy) sem lançar DataCloneError', async () => {
+    // As stores Pinia guardam a fila em arrays reativos (Proxy) — o
+    // IndexedDB nativo não sabe cloná-los diretamente. Simula isso com
+    // `reactive()` do Vue, sem precisar de uma store Pinia inteira aqui.
+    const { reactive } = await import('vue')
+    const chave = 'chave-reativa-' + Math.random()
+    const arrayReativo = reactive([{ id: 1 }])
+    await salvarFila(chave, arrayReativo)
+    const valor = await carregarFila(chave)
+    expect(valor).toEqual([{ id: 1 }])
+  })
+
   it('migra automaticamente um valor antigo do localStorage, uma vez só', async () => {
     const chave = 'chave-migracao-' + Math.random()
     localStorage.setItem(chave, JSON.stringify([{ id: 'antigo' }]))

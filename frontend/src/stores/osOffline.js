@@ -71,12 +71,8 @@ export const useOsOfflineStore = defineStore('osOffline', {
     },
 
     async _persistir() {
-      // this.locais/this.acoesPendentes são arrays reativos do Pinia (Proxy).
-      // O IndexedDB clona por structured clone, que não sabe lidar com Proxy —
-      // por isso o round-trip JSON (a mesma serialização que o localStorage já
-      // fazia implicitamente) antes de gravar.
-      await salvarFila(KEY_LOCAIS, JSON.parse(JSON.stringify(this.locais)))
-      await salvarFila(KEY_ACOES, JSON.parse(JSON.stringify(this.acoesPendentes)))
+      await salvarFila(KEY_LOCAIS, this.locais)
+      await salvarFila(KEY_ACOES, this.acoesPendentes)
     },
 
     local(id) {
