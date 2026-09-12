@@ -24,6 +24,7 @@ beforeEach(async () => {
   // sem isso, o item com erroSync deixado por um teste vaza para o próximo.
   await filaStore.remover('os_locais')
   await filaStore.remover('os_acoes_pendentes')
+  localStorage.clear()
 })
 
 describe('osOffline — durabilidade', () => {
@@ -75,5 +76,43 @@ describe('osOffline — durabilidade', () => {
     const store2 = useOsOfflineStore()
     await store2.iniciar()
     expect(store2.locais).toHaveLength(1)
+  })
+})
+
+// Este é o caminho de atualização que TODO aparelho em campo vai percorrer uma
+// vez: a versão antiga do app deixou a fila no localStorage e a nova precisa
+// adotá-la sem perder item nenhum. Diferente dos testes de round-trip do
+// filaStorage, aqui o cenário roda ponta a ponta pela store de verdade, com as
+// chaves antigas reais.
+describe('osOffline — atualização vinda da versão que usava localStorage', () => {
+  it('iniciar() adota a fila legada do localStorage, limpa a chave antiga e depois lê do IndexedDB', async () => {
+    localStorage.setItem(
+      'os_locais',
+      JSON.stringify([{ id: 'tmp_legado', cliente: 7, tipo_servico: 'Antigo', erroSync: '' }]),
+    )
+    localStorage.setItem(
+      'os_acoes_pendentes',
+      JSON.stringify([{ osId: 12, tipo: 'iniciar', payload: {}, erroSync: '' }]),
+    )
+
+    const store1 = useOsOfflineStore()
+    await store1.iniciar()
+
+    expect(store1.iniciado).toBe(true)
+    expect(store1.locais).toHaveLength(1)
+    expect(store1.locais[0].id).toBe('tmp_legado')
+    expect(store1.acoesPendentes).toHaveLength(1)
+    expect(store1.pendentes).toBe(2)
+
+    // migrado: a chave antiga não fica para trás (duas fontes de verdade)
+    expect(localStorage.getItem('os_locais')).toBeNull()
+    expect(localStorage.getItem('os_acoes_pendentes')).toBeNull()
+
+    // reabrir o app: os dados vêm do IndexedDB, sem depender mais do localStorage
+    setActivePinia(createPinia())
+    const store2 = useOsOfflineStore()
+    await store2.iniciar()
+    expect(store2.locais[0].id).toBe('tmp_legado')
+    expect(store2.acoesPendentes).toHaveLength(1)
   })
 })

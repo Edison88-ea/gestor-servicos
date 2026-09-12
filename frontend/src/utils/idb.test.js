@@ -6,7 +6,7 @@
 // DOM, então rodar em Node aqui não perde cobertura nenhuma.
 // @vitest-environment node
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { blobStore, filaStore } from './idb'
 
 function novoNomeDb() {
@@ -32,6 +32,30 @@ describe('filaStore', () => {
     await filaStore.remover('pra-remover')
     const valor = await filaStore.obter('pra-remover')
     expect(valor).toBeUndefined()
+  })
+})
+
+describe('abertura do banco que falha', () => {
+  it('não desliga o IndexedDB pelo resto da sessão — a chamada seguinte tenta de novo', async () => {
+    // `dbPromise` é módulo-escopo e os testes acima já o preencheram com uma
+    // conexão boa; recarregar o módulo devolve o estado "nada aberto ainda".
+    vi.resetModules()
+    const { filaStore: fila } = await import('./idb')
+
+    // Primeira abertura cai no onblocked — o caso real: outra aba segurando a
+    // versão antiga do banco (ex.: logo depois de atualizar o PWA).
+    const spy = vi.spyOn(indexedDB, 'open').mockImplementationOnce(() => {
+      const req = { onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null }
+      setTimeout(() => req.onblocked?.(), 0)
+      return req
+    })
+
+    await expect(fila.obter('qualquer')).rejects.toThrow(/bloqueado/i)
+
+    // a outra aba fechou: a abertura volta a funcionar sem reload da página
+    spy.mockRestore()
+    await fila.definir('depois-do-blocked', [{ ok: true }])
+    expect(await fila.obter('depois-do-blocked')).toEqual([{ ok: true }])
   })
 })
 
