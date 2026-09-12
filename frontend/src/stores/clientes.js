@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import client from '../api/client'
 import { useOsOfflineStore } from './osOffline'
-import { carregarFila, salvarFila } from '../utils/filaStorage'
+import { carregarFila, mesclarFila, salvarFila } from '../utils/filaStorage'
 
 const KEY = 'clientes_cache'
 const PENDENTES_KEY = 'clientes_pendentes'
@@ -56,16 +56,26 @@ export const useClientesStore = defineStore('clientes', {
     // gatilho de sincronização tenta de novo) em vez de achar que a fila está
     // vazia e sobrescrever no disco, com `[]`, clientes que nunca subiram.
     // Nunca lança — quem chama faz fire-and-forget.
+    //
+    // O que entra em `pendentes` é a UNIÃO do disco com o que já está em
+    // memória: esta ação é retryável e, enquanto ela não passa, o técnico
+    // continua podendo cadastrar cliente sem sinal (o app não bloqueia). Um
+    // cliente criado nessa janela pode não ter chegado ao disco — atribuir o
+    // disco direto o tirava de `pendentes` e ele nunca mais era enviado (ficava
+    // só no cache de busca `todos`, parecendo cadastrado). Ver `mesclarFila`.
     async iniciar() {
       if (this.iniciado) return
       try {
         // (uma chave só aqui — os outros dados da store são cache de leitura,
         // não fila; por isso não há Promise.all como nas outras duas stores)
         const pendentes = await carregarFila(PENDENTES_KEY)
-        this.pendentes = pendentes
+        const haviaEmMemoria = this.pendentes.length > 0
+        this.pendentes = mesclarFila(pendentes, this.pendentes, (c) => c.id)
         // um cliente pendente carregado agora também precisa aparecer na busca
         this.todos = comPendentes(this.todos, this.pendentes)
         this.iniciado = true
+        // leitura voltou a funcionar: torna a união durável
+        if (haviaEmMemoria) await this._persistir()
       } catch (e) {
         console.warn('[clientes] falha ao carregar a fila de pendentes; tentando de novo no próximo ciclo', e)
       }

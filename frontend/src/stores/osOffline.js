@@ -1,10 +1,17 @@
 import { defineStore } from 'pinia'
 import client from '../api/client'
 import { blobStore, novaChaveBlob, paraBlobPersistente } from '../utils/idb'
-import { carregarFila, salvarFila } from '../utils/filaStorage'
+import { carregarFila, mesclarFila, salvarFila } from '../utils/filaStorage'
 
 const KEY_LOCAIS = 'os_locais'
 const KEY_ACOES = 'os_acoes_pendentes'
+
+// Identidade estável de cada fila, para a união feita em `iniciar()`.
+// `locais` já nasce com `id` (`tmp_...`) em `osLocalVazia`. `acoesPendentes`
+// não tem campo de id próprio, então usa a mesma chave composta que a
+// PendenciasView já usa como identidade de fato no `:key`.
+const idLocal = (os) => os.id
+const idAcao = (a) => `${a.osId}|${a.tipo}|${a.criadoEm}`
 
 function novoTmpId() {
   return `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -70,6 +77,12 @@ export const useOsOfflineStore = defineStore('osOffline', {
     // carregou ficava `[]` em memória e a primeira gravação seguinte
     // (`_persistir`, que grava as duas chaves juntas) apagava do disco o que
     // ainda não tinha subido. Nunca lança — quem chama faz fire-and-forget.
+    //
+    // O que entra no state é a UNIÃO do disco com o que já está em memória, não
+    // o disco puro: como esta ação é retryável (a primeira tentativa pode ter
+    // falhado) e o app não bloqueia o técnico enquanto ela não passa, pode
+    // haver OS/ação criada em memória que o disco ainda não conhece. Ver
+    // `mesclarFila`.
     async iniciar() {
       if (this.iniciado) return
       try {
@@ -77,9 +90,13 @@ export const useOsOfflineStore = defineStore('osOffline', {
           carregarFila(KEY_LOCAIS),
           carregarFila(KEY_ACOES),
         ])
-        this.locais = locais
-        this.acoesPendentes = acoes
+        const haviaEmMemoria = this.locais.length > 0 || this.acoesPendentes.length > 0
+        this.locais = mesclarFila(locais, this.locais, idLocal, true)
+        this.acoesPendentes = mesclarFila(acoes, this.acoesPendentes, idAcao)
         this.iniciado = true
+        // Agora que a leitura voltou a funcionar, torna a união durável — o que
+        // foi criado durante a janela pode nunca ter chegado ao disco.
+        if (haviaEmMemoria) await this._persistir()
       } catch (e) {
         console.warn('[osOffline] falha ao carregar a fila offline; tentando de novo no próximo ciclo', e)
       }

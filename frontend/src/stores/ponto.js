@@ -2,7 +2,11 @@ import { defineStore } from 'pinia'
 import client from '../api/client'
 import { dataLocalISO } from '../utils/tempo'
 import { arredondarCoord, arredondarMetros } from '../utils/geo'
-import { carregarFila, salvarFila } from '../utils/filaStorage'
+import { carregarFila, mesclarFila, salvarFila } from '../utils/filaStorage'
+
+// Identidade estável de uma batida: é a mesma chave composta que o
+// `_enfileirar` já usa para não duplicar (tipo + instante do registro).
+const idBatida = (r) => `${r.tipo}|${r.registrado_em}`
 
 function ontemISO() {
   const d = new Date()
@@ -71,6 +75,12 @@ export const usePontoStore = defineStore('ponto', {
     // `iniciado = true` faria a próxima gravação apagar do disco a chave que
     // não carregou. Nunca lança; se falhar, `iniciado` continua false e o
     // próximo gatilho de sincronização tenta de novo.
+    //
+    // O que entra no state é a UNIÃO do disco com o que já está em memória, não
+    // o disco puro: enquanto `iniciar()` não passa, o técnico continua batendo
+    // ponto (o app não bloqueia), e uma batida feita nessa janela pode não ter
+    // chegado ao disco. Atribuir o disco direto a apagava da fila e da lista
+    // "Registros de hoje" na cara do técnico. Ver `mesclarFila`.
     async iniciar() {
       if (this.iniciado) return
       try {
@@ -78,9 +88,14 @@ export const usePontoStore = defineStore('ponto', {
           carregarFila(QUEUE_KEY),
           carregarFila(REJEITADOS_KEY),
         ])
-        this.filaOffline = fila
-        this.rejeitados = rejeitados
+        const haviaFila = this.filaOffline.length > 0
+        const haviaRejeitados = this.rejeitados.length > 0
+        this.filaOffline = mesclarFila(fila, this.filaOffline, idBatida)
+        this.rejeitados = mesclarFila(rejeitados, this.rejeitados, idBatida)
         this.iniciado = true
+        // leitura voltou a funcionar: torna a união durável
+        if (haviaFila) await this._persistirFila()
+        if (haviaRejeitados) await this._persistirRejeitados()
       } catch (e) {
         console.warn('[ponto] falha ao carregar a fila offline; tentando de novo no próximo ciclo', e)
       }

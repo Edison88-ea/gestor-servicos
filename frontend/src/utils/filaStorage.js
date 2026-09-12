@@ -37,6 +37,30 @@ export async function carregarFila(chave, valorPadrao = []) {
   return migrado
 }
 
+// União de uma fila lida do disco com a que já está em memória, por identidade
+// estável. Existe porque `iniciar()` das stores é retryável: se a primeira
+// leitura falha, a store continua operando (o app NUNCA bloqueia o técnico por
+// causa disso — é requisito do design) e ele pode criar OS, bater ponto ou
+// cadastrar cliente nesse meio-tempo. Quando a leitura enfim dá certo, o disco
+// é a cópia ATRASADA — a gravação dessas criações pode não ter chegado lá, pela
+// mesma condição que derrubou a leitura (IndexedDB bloqueado por outra aba).
+// Atribuir o resultado do disco direto no state apagava essas criações em
+// silêncio, sem erro e sem nada na tela.
+//
+// Empate (mesma identidade nos dois lados): vence a versão em memória — é ela
+// que recebeu as mutações in-place (erroSync, status, progresso de sync).
+// `novosPrimeiro` só existe para respeitar a ordem que a fila já tem (`locais`
+// é mais-novo-primeiro por causa do `unshift`; as outras são append).
+export function mesclarFila(doDisco, emMemoria, identidade, novosPrimeiro = false) {
+  if (!emMemoria || !emMemoria.length) return doDisco
+  const porId = new Map(emMemoria.map((i) => [identidade(i), i]))
+  const base = doDisco.map((i) => porId.get(identidade(i)) || i)
+  const noDisco = new Set(doDisco.map(identidade))
+  const novos = emMemoria.filter((i) => !noDisco.has(identidade(i)))
+  if (!novos.length) return base
+  return novosPrimeiro ? [...novos, ...base] : [...base, ...novos]
+}
+
 // Arrays/objetos de uma store Pinia são Proxies reativos — o algoritmo de
 // structured clone do IndexedDB não sabe cloná-los (DataCloneError), mesmo
 // que os dados por trás sejam simples. O round-trip por JSON os reduz a
