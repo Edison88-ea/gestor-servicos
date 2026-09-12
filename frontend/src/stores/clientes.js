@@ -182,10 +182,14 @@ export const useClientesStore = defineStore('clientes', {
           // nunca volta para a fila. As escritas locais abaixo são contidas
           // (filaStorage não lança), mas se alguma falhasse mesmo assim, o
           // certo é perder a atualização local — não reenviar o cadastro.
+          // A troca do id na OS vem primeiro de propósito: se ela não
+          // acontecer, a OS fica adiada para sempre (o envio é bloqueado
+          // enquanto o cliente for `tmp_`); já falhar no _substituir custa só
+          // um item desatualizado no cache de busca.
           try {
-            await this._substituir(local.id, criado)
             // qualquer OS criada offline que aponta para este cliente tmp
             await osOffline.trocarClienteTmp(local.id, criado.id)
+            await this._substituir(local.id, criado)
           } catch (e) {
             console.warn('[clientes] cliente enviado, mas a atualização local falhou', e)
           }
