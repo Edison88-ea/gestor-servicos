@@ -143,7 +143,7 @@ export const useClientesStore = defineStore('clientes', {
           const { data } = await client.post('/clientes/', payload)
           this._substituir(local.id, data)
           // qualquer OS criada offline que aponta para este cliente tmp
-          osOffline.trocarClienteTmp(local.id, data.id)
+          await osOffline.trocarClienteTmp(local.id, data.id)
         } catch (e) {
           local.erroSync = e.response
             ? e.response.data?.detail || `Erro ${e.response.status}`

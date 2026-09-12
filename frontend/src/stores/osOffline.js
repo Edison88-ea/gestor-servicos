@@ -1,20 +1,10 @@
 import { defineStore } from 'pinia'
 import client from '../api/client'
 import { blobStore, novaChaveBlob, paraBlobPersistente } from '../utils/idb'
+import { carregarFila, salvarFila } from '../utils/filaStorage'
 
 const KEY_LOCAIS = 'os_locais'
 const KEY_ACOES = 'os_acoes_pendentes'
-
-function carregar(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]')
-  } catch {
-    return []
-  }
-}
-function salvar(key, valor) {
-  localStorage.setItem(key, JSON.stringify(valor))
-}
 
 function novoTmpId() {
   return `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -60,9 +50,10 @@ function osLocalVazia(dados) {
 
 export const useOsOfflineStore = defineStore('osOffline', {
   state: () => ({
-    locais: carregar(KEY_LOCAIS),
-    acoesPendentes: carregar(KEY_ACOES),
+    locais: [],
+    acoesPendentes: [],
     sincronizando: false,
+    iniciado: false,
   }),
 
   getters: {
@@ -72,9 +63,20 @@ export const useOsOfflineStore = defineStore('osOffline', {
   },
 
   actions: {
-    _persistir() {
-      salvar(KEY_LOCAIS, this.locais)
-      salvar(KEY_ACOES, this.acoesPendentes)
+    async iniciar() {
+      if (this.iniciado) return
+      this.iniciado = true
+      this.locais = await carregarFila(KEY_LOCAIS)
+      this.acoesPendentes = await carregarFila(KEY_ACOES)
+    },
+
+    async _persistir() {
+      // this.locais/this.acoesPendentes são arrays reativos do Pinia (Proxy).
+      // O IndexedDB clona por structured clone, que não sabe lidar com Proxy —
+      // por isso o round-trip JSON (a mesma serialização que o localStorage já
+      // fazia implicitamente) antes de gravar.
+      await salvarFila(KEY_LOCAIS, JSON.parse(JSON.stringify(this.locais)))
+      await salvarFila(KEY_ACOES, JSON.parse(JSON.stringify(this.acoesPendentes)))
     },
 
     local(id) {
@@ -83,7 +85,7 @@ export const useOsOfflineStore = defineStore('osOffline', {
 
     // Chamado quando um cliente criado offline sincroniza e ganha id real: as
     // OS locais que apontavam para o id temporário passam a apontar para o real.
-    trocarClienteTmp(tmpId, realId) {
+    async trocarClienteTmp(tmpId, realId) {
       let mudou = false
       for (const os of this.locais) {
         if (os.cliente === tmpId) {
@@ -91,23 +93,23 @@ export const useOsOfflineStore = defineStore('osOffline', {
           mudou = true
         }
       }
-      if (mudou) this._persistir()
+      if (mudou) await this._persistir()
     },
 
     // --- criação/edição local (usadas quando offline ou a OS é tmp_) ---
 
-    criarLocal(dados) {
+    async criarLocal(dados) {
       const os = osLocalVazia(dados)
       this.locais.unshift(os)
-      this._persistir()
+      await this._persistir()
       return os
     },
 
-    aplicarLocal(id, mudancas) {
+    async aplicarLocal(id, mudancas) {
       const os = this.local(id)
       if (!os) return null
       Object.assign(os, mudancas)
-      this._persistir()
+      await this._persistir()
       return os
     },
 
@@ -118,7 +120,7 @@ export const useOsOfflineStore = defineStore('osOffline', {
       const os = this.local(id)
       const foto = { id: chave, legenda: '', imagem: URL.createObjectURL(blob), _local: true }
       os.fotos.push(foto)
-      this._persistir()
+      await this._persistir()
       return foto
     },
 
@@ -132,13 +134,13 @@ export const useOsOfflineStore = defineStore('osOffline', {
       }
       os.status = 'CONCLUIDA'
       os.data_conclusao = new Date().toISOString()
-      this._persistir()
+      await this._persistir()
       return os
     },
 
     // --- ações pendentes em OS que já existem no servidor ---
 
-    enfileirarAcao(osId, tipo, payload = {}, blobChave = null) {
+    async enfileirarAcao(osId, tipo, payload = {}, blobChave = null) {
       this.acoesPendentes.push({
         osId,
         tipo, // 'iniciar' | 'pausar' | 'retomar' | 'foto' | 'concluir'
@@ -147,7 +149,7 @@ export const useOsOfflineStore = defineStore('osOffline', {
         criadoEm: new Date().toISOString(),
         erroSync: '',
       })
-      this._persistir()
+      await this._persistir()
     },
 
     // --- sincronização ---
@@ -190,14 +192,14 @@ export const useOsOfflineStore = defineStore('osOffline', {
             longitude_abertura: os.longitude_abertura ?? undefined,
           })
           os.sync.realId = criada.id
-          this._persistir()
+          await this._persistir()
         }
         const realId = os.sync.realId
 
         if (!os.sync.iniciado && ['EM_ANDAMENTO', 'PAUSADA', 'CONCLUIDA'].includes(os.status)) {
           await client.post(`/ordens-servico/${realId}/iniciar/`)
           os.sync.iniciado = true
-          this._persistir()
+          await this._persistir()
         }
 
         for (const foto of os.fotos) {
@@ -210,7 +212,7 @@ export const useOsOfflineStore = defineStore('osOffline', {
             await client.post(`/ordens-servico/${realId}/fotos/`, fd)
           }
           os.sync.fotosOk.push(foto.id)
-          this._persistir()
+          await this._persistir()
         }
 
         if (!os.sync.concluido && os.status === 'CONCLUIDA') {
@@ -228,10 +230,10 @@ export const useOsOfflineStore = defineStore('osOffline', {
         for (const foto of os.fotos) await blobStore.remover(foto.id)
         if (os.assinaturaChave) await blobStore.remover(os.assinaturaChave)
         this.locais = this.locais.filter((o) => o.id !== os.id)
-        this._persistir()
+        await this._persistir()
       } catch (e) {
         os.erroSync = mensagemFalha(e)
-        this._persistir()
+        await this._persistir()
       }
     },
 
@@ -259,17 +261,17 @@ export const useOsOfflineStore = defineStore('osOffline', {
         }
         if (acao.blobChave) await blobStore.remover(acao.blobChave)
         this.acoesPendentes = this.acoesPendentes.filter((a) => a !== acao)
-        this._persistir()
+        await this._persistir()
       } catch (e) {
         acao.erroSync = mensagemFalha(e)
-        this._persistir()
+        await this._persistir()
       }
     },
 
-    descartarComErro() {
+    async descartarComErro() {
       this.locais = this.locais.filter((o) => !o.erroSync)
       this.acoesPendentes = this.acoesPendentes.filter((a) => !a.erroSync)
-      this._persistir()
+      await this._persistir()
     },
   },
 })
