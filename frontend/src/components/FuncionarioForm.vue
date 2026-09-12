@@ -357,7 +357,7 @@ legend {
 }
 .grade {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px 12px;
 }
 .grade .col2 {
@@ -369,6 +369,7 @@ label {
   font-size: 13px;
   color: var(--text-muted);
   gap: 4px;
+  min-width: 0;
 }
 input,
 select {
@@ -378,6 +379,9 @@ select {
   background: var(--surface);
   color: var(--text);
   font-size: 15px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 input:disabled,
 select:disabled {

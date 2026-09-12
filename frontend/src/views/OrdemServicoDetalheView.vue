@@ -314,7 +314,7 @@ onMounted(carregar)
 
   <p v-if="erro && !ordem" style="padding: 16px; color: var(--danger)">{{ erro }}</p>
 
-  <div class="content" v-if="ordem">
+  <div class="content estreito" v-if="ordem">
     <div v-if="ordem.offline" class="offline-banner" style="border-radius: 8px; margin-bottom: 12px">
       Esta OS foi criada offline e ainda não foi enviada.
     </div>

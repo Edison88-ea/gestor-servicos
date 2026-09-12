@@ -66,7 +66,7 @@ function estouNoLocal() {
     <p v-if="store.carregando && !store.listaCompleta.length">Carregando...</p>
     <p v-else-if="store.listaCompleta.length === 0">Nenhuma ordem de serviço atribuída.</p>
 
-    <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px">
+    <ul class="grid-cards">
       <li v-for="os in store.listaCompleta" :key="os.id">
         <RouterLink :to="`/ordens-servico/${os.id}`" style="text-decoration: none; color: inherit">
           <div class="card">

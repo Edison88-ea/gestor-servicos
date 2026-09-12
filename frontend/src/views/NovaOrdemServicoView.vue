@@ -143,7 +143,7 @@ async function criarOs() {
     <strong>Nova Ordem de Serviço</strong>
   </div>
 
-  <div class="content">
+  <div class="content estreito">
     <div
       v-if="rascunhoRestaurado && !cadastrandoCliente"
       style="background: var(--surface-2, rgba(255, 255, 255, 0.04)); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px"

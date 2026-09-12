@@ -61,7 +61,7 @@ onMounted(async () => {
     <strong>Nova Obra</strong>
   </div>
 
-  <div class="content">
+  <div class="content estreito">
     <div class="card" style="display: flex; flex-direction: column; gap: 12px">
       <label>
         Nome

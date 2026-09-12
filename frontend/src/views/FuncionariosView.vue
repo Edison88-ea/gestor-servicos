@@ -52,7 +52,7 @@ onMounted(recarregar)
     </button>
   </div>
 
-  <div class="content">
+  <div class="content" :class="{ estreito: form }">
     <FuncionarioForm
       v-if="form"
       :funcionario="form.id ? form : null"
@@ -78,7 +78,7 @@ onMounted(recarregar)
         Nenhum funcionário {{ termo ? 'para essa busca' : 'cadastrado' }}.
       </p>
 
-      <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
+      <ul class="grid-cards">
         <li
           v-for="u in store.lista"
           :key="u.id"

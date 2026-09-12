@@ -134,6 +134,9 @@ export const useClientesStore = defineStore('clientes', {
       this.sincronizando = true
       const osOffline = useOsOfflineStore()
       const restantes = []
+      // Percorre todos os pendentes mesmo se algum falhar: um cliente travado
+      // não pode fazer os outros (e as OS que dependem deles) ficarem presos
+      // sem nunca serem tentados de novo.
       for (const local of this.pendentes) {
         try {
           const { id, _local, erroSync, ...payload } = local
@@ -142,13 +145,10 @@ export const useClientesStore = defineStore('clientes', {
           // qualquer OS criada offline que aponta para este cliente tmp
           osOffline.trocarClienteTmp(local.id, data.id)
         } catch (e) {
-          if (e.response) {
-            local.erroSync = e.response.data?.detail || `Erro ${e.response.status}`
-            restantes.push(local)
-          } else {
-            restantes.push(local)
-            break // sem rede: para e tenta de novo depois
-          }
+          local.erroSync = e.response
+            ? e.response.data?.detail || `Erro ${e.response.status}`
+            : 'Falha de conexão ao enviar — tentando de novo automaticamente'
+          restantes.push(local)
         }
       }
       this.pendentes = restantes

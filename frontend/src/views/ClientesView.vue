@@ -69,7 +69,7 @@ onMounted(() => store.buscar())
         Nenhum cliente {{ termo ? 'para essa busca' : 'cadastrado' }}.
       </p>
 
-      <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px">
+      <ul class="grid-cards">
         <li
           v-for="c in store.resultados"
           :key="c.id"

@@ -14,10 +14,13 @@ services:
     branch: main
     buildCommand: "bash render-build.sh"
     # --threads: concorrência sem o custo de RAM de mais workers (plano free).
-    # --timeout 30: um upload/requisição preso não segura o worker pra sempre.
+    # --timeout 65: acima dos 60s que o front dá pra upload de foto/assinatura
+    # em 4G ruim (api/client.js TIMEOUT_UPLOAD) — com 30 aqui, o gunicorn matava
+    # o worker (conexão cai sem resposta) antes do front desistir, e o app
+    # reenfileirava a mesma OS pra sempre sem nunca mostrar erro nenhum.
     # --max-requests: recicla o worker de tempos em tempos (limita vazamento de
     # memória do Pillow em uploads).
-    startCommand: "cd backend && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --threads 4 --timeout 30 --max-requests 1000 --max-requests-jitter 100"
+    startCommand: "cd backend && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --threads 4 --timeout 65 --max-requests 1000 --max-requests-jitter 100"
     healthCheckPath: /healthz/
     autoDeploy: true
     envVars:

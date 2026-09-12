@@ -138,7 +138,7 @@ onMounted(carregar)
     <RouterLink to="/estoque" style="color: var(--accent); font-weight: 600; text-decoration: none">Voltar</RouterLink>
   </div>
 
-  <div class="content">
+  <div class="content estreito">
     <p v-if="erro" class="card" style="color: var(--danger)">{{ erro }}</p>
 
     <template v-if="material">

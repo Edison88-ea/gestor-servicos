@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useNavGroups } from '../composables/useNavGroups'
 import Logo3D from './Logo3D.vue'
 
 defineProps({ aberto: { type: Boolean, default: false } })
@@ -9,9 +10,8 @@ const emit = defineEmits(['fechar'])
 
 const auth = useAuthStore()
 const router = useRouter()
+const grupos = useNavGroups()
 
-const ehGestao = computed(() => ['GESTOR', 'RH', 'ADMIN'].includes(auth.user?.papel))
-const podeEstoque = computed(() => ['GESTOR', 'ADMIN'].includes(auth.user?.papel))
 // Independente do papel: a secretária é RH e bate ponto; a dona é gestão e não.
 const registraPonto = computed(() => auth.user?.registra_ponto !== false)
 
@@ -64,33 +64,18 @@ function sair() {
       </div>
 
       <nav style="padding: 8px 0; display: flex; flex-direction: column">
-        <template v-if="registraPonto">
-          <div class="titulo-bloco">Meu ponto</div>
-          <button type="button" class="item-menu" @click="irPara('/')">Bater Ponto</button>
-          <button type="button" class="item-menu" @click="irPara('/ponto/espelho')">Meu Cartão Ponto</button>
-          <button type="button" class="item-menu" @click="irPara('/ponto/indicadores')">Meus Indicadores</button>
-          <button v-if="!ehGestao" type="button" class="item-menu" @click="irPara('/ponto/solicitacoes')">
-            Minhas Solicitações
+        <template v-for="g in grupos" :key="g.titulo">
+          <div class="titulo-bloco">{{ g.titulo }}</div>
+          <button
+            v-for="item in g.itens"
+            :key="item.to"
+            type="button"
+            class="item-menu"
+            @click="irPara(item.to)"
+          >
+            {{ item.rotulo }}
           </button>
         </template>
-
-        <template v-if="ehGestao">
-          <div class="titulo-bloco">Gestão</div>
-          <button type="button" class="item-menu" @click="irPara('/gestor')">Painel</button>
-          <button type="button" class="item-menu" @click="irPara('/gestao/ponto/espelho')">Ponto da Equipe</button>
-          <button type="button" class="item-menu" @click="irPara('/gestao/ponto/indicadores')">
-            Indicadores da Equipe
-          </button>
-          <button type="button" class="item-menu" @click="irPara('/ponto/solicitacoes')">Solicitações</button>
-          <button type="button" class="item-menu" @click="irPara('/funcionarios')">Funcionários</button>
-        </template>
-
-        <div class="titulo-bloco">Operação</div>
-        <button type="button" class="item-menu" @click="irPara('/ordens-servico')">Ordens de Serviço</button>
-        <button type="button" class="item-menu" @click="irPara('/obras')">Obras</button>
-        <button v-if="podeEstoque" type="button" class="item-menu" @click="irPara('/estoque')">Estoque</button>
-        <button type="button" class="item-menu" @click="irPara('/clientes')">Clientes</button>
-        <button v-if="!ehGestao" type="button" class="item-menu" @click="irPara('/meus-dados')">Meus dados</button>
       </nav>
 
       <div style="border-top: 1px solid var(--border); padding: 8px 0">

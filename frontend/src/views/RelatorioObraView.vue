@@ -76,7 +76,7 @@ onMounted(carregar)
 
   <p v-if="erro" style="padding: 16px; color: var(--danger)">{{ erro }}</p>
 
-  <div v-else-if="obra" class="content relatorio">
+  <div v-else-if="obra" class="content estreito relatorio">
     <header style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px">
       <div>
         <div style="font-size: 18px; font-weight: 700">{{ EMPRESA }}</div>
