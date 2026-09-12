@@ -4,10 +4,12 @@ import { computed } from 'vue'
 import { useOsOfflineStore } from '../stores/osOffline'
 import { useClientesStore } from '../stores/clientes'
 import { usePontoStore } from '../stores/ponto'
+import { useSincronizacaoStore } from '../stores/sincronizacao'
 
 const osOffline = useOsOfflineStore()
 const clientes = useClientesStore()
 const ponto = usePontoStore()
+const sinc = useSincronizacaoStore()
 
 const itens = computed(() => {
   const lista = []
@@ -55,10 +57,12 @@ const itens = computed(() => {
   return lista
 })
 
+// Mesmo orquestrador do disparo automático do App.vue: ordem clientes → OS →
+// ponto (uma OS que aponta para um cliente `tmp_` só sobe depois do cliente) e
+// a mesma trava contra sobreposição. Reimplementar o disparo aqui — sem await,
+// em paralelo — fazia o botão não resolver nada nesse caso, sem explicação.
 function tentarAgora() {
-  clientes.sincronizar()
-  osOffline.sincronizar()
-  ponto.sincronizarFila()
+  sinc.sincronizarTudo()
 }
 </script>
 
@@ -71,7 +75,8 @@ function tentarAgora() {
   </div>
 
   <div class="content">
-    <p v-if="itens.length === 0" style="color: var(--text-muted)">Nada pendente — tudo sincronizado.</p>
+    <!-- contagem vem da store de sincronização, a mesma do banner e do menu -->
+    <p v-if="sinc.totalItens === 0" style="color: var(--text-muted)">Nada pendente — tudo sincronizado.</p>
 
     <ul class="grid-cards">
       <li v-for="item in itens" :key="item.chave" class="card">
