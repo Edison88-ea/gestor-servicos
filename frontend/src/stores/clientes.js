@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import client from '../api/client'
 import { useOsOfflineStore } from './osOffline'
+import { carregarFila, salvarFila } from '../utils/filaStorage'
 
 const KEY = 'clientes_cache'
 const PENDENTES_KEY = 'clientes_pendentes'
@@ -44,30 +45,38 @@ export const useClientesStore = defineStore('clientes', {
   state: () => ({
     resultados: [],
     todos: ler(KEY), // lista completa em cache, para busca offline
-    // clientes cadastrados sem sinal, aguardando envio
-    pendentes: ler(PENDENTES_KEY),
+    pendentes: [], // clientes cadastrados sem sinal, aguardando envio
     carregando: false,
     sincronizando: false,
+    iniciado: false,
   }),
   actions: {
-    _persistir() {
-      salvar(KEY, this.todos)
-      salvar(PENDENTES_KEY, this.pendentes)
+    async iniciar() {
+      if (this.iniciado) return
+      this.iniciado = true
+      this.pendentes = await carregarFila(PENDENTES_KEY)
+      // um cliente pendente carregado agora também precisa aparecer na busca
+      this.todos = comPendentes(this.todos, this.pendentes)
     },
 
-    _inserirLocal(c) {
+    async _persistir() {
+      salvar(KEY, this.todos) // cache de leitura: continua síncrono em localStorage
+      await salvarFila(PENDENTES_KEY, this.pendentes)
+    },
+
+    async _inserirLocal(c) {
       this.todos = [c, ...this.todos.filter((x) => x.id !== c.id)]
       this.resultados = [c, ...this.resultados.filter((x) => x.id !== c.id)]
-      this._persistir()
+      await this._persistir()
     },
 
     // Substitui um cliente (por id) na memória e no cache — usado ao trocar o
     // id temporário pelo real depois da sincronização.
-    _substituir(idAntigo, novo) {
+    async _substituir(idAntigo, novo) {
       const troca = (lista) => lista.map((c) => (c.id === idAntigo ? novo : c))
       this.todos = troca(this.todos)
       this.resultados = troca(this.resultados)
-      this._persistir()
+      await this._persistir()
     },
 
     async buscar(termo) {
@@ -97,7 +106,7 @@ export const useClientesStore = defineStore('clientes', {
       if (navigator.onLine) {
         try {
           const { data } = await client.post('/clientes/', payload)
-          this._inserirLocal(data)
+          await this._inserirLocal(data)
           return data
         } catch (e) {
           if (e.response) throw e // 4xx: erro de validação de verdade
@@ -106,7 +115,7 @@ export const useClientesStore = defineStore('clientes', {
       }
       const local = { id: novoTmpId(), _local: true, ...payload }
       this.pendentes.push(local)
-      this._inserirLocal(local)
+      await this._inserirLocal(local)
       return local
     },
 
@@ -116,7 +125,7 @@ export const useClientesStore = defineStore('clientes', {
         const p = this.pendentes.find((c) => c.id === id)
         if (p) Object.assign(p, payload)
         const atualizado = { ...(p || { id, _local: true }), ...payload }
-        this._substituir(id, atualizado)
+        await this._substituir(id, atualizado)
         return atualizado
       }
       if (!navigator.onLine) {
@@ -125,7 +134,7 @@ export const useClientesStore = defineStore('clientes', {
         throw e
       }
       const { data } = await client.patch(`/clientes/${id}/`, payload)
-      this._substituir(id, data)
+      await this._substituir(id, data)
       return data
     },
 
@@ -141,7 +150,7 @@ export const useClientesStore = defineStore('clientes', {
         try {
           const { id, _local, erroSync, ...payload } = local
           const { data } = await client.post('/clientes/', payload)
-          this._substituir(local.id, data)
+          await this._substituir(local.id, data)
           // qualquer OS criada offline que aponta para este cliente tmp
           await osOffline.trocarClienteTmp(local.id, data.id)
         } catch (e) {
@@ -152,7 +161,7 @@ export const useClientesStore = defineStore('clientes', {
         }
       }
       this.pendentes = restantes
-      this._persistir()
+      await this._persistir()
       this.sincronizando = false
     },
 
