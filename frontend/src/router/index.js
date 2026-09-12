@@ -19,6 +19,7 @@ import NovaOrdemServicoView from '../views/NovaOrdemServicoView.vue'
 import OrdemServicoDetalheView from '../views/OrdemServicoDetalheView.vue'
 import ComprovanteOsView from '../views/ComprovanteOsView.vue'
 import ClientesView from '../views/ClientesView.vue'
+import PendenciasView from '../views/PendenciasView.vue'
 import ObrasView from '../views/ObrasView.vue'
 import NovaObraView from '../views/NovaObraView.vue'
 import ObraDetalheView from '../views/ObraDetalheView.vue'
@@ -74,6 +75,7 @@ const routes = [
   { path: '/funcionarios', name: 'funcionarios', component: FuncionariosView, meta: { auth: true, gestor: true } },
   { path: '/meus-dados', name: 'meus-dados', component: MeusDadosView, meta: { auth: true } },
   { path: '/clientes', name: 'clientes', component: ClientesView, meta: { auth: true } },
+  { path: '/pendencias', name: 'pendencias', component: PendenciasView, meta: { auth: true } },
   { path: '/ordens-servico', name: 'ordens-servico', component: OrdensServicoView, meta: { auth: true } },
   { path: '/ordens-servico/nova', name: 'nova-ordem-servico', component: NovaOrdemServicoView, meta: { auth: true } },
   {

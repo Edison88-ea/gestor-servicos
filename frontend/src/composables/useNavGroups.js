@@ -1,5 +1,6 @@
 import { computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { useSincronizacaoStore } from '../stores/sincronizacao'
 
 const GESTAO = ['GESTOR', 'RH', 'ADMIN']
 const ESTOQUE = ['GESTOR', 'ADMIN']
@@ -11,6 +12,7 @@ const ESTOQUE = ['GESTOR', 'ADMIN']
  */
 export function useNavGroups() {
   const auth = useAuthStore()
+  const sinc = useSincronizacaoStore()
 
   return computed(() => {
     const papel = auth.user?.papel
@@ -47,10 +49,15 @@ export function useNavGroups() {
       })
     }
 
+    // Mesma contagem da tela Pendências (inclui as batidas recusadas, que
+    // também exigem ação) — fonte única em stores/sincronizacao.js.
+    const pendencias = sinc.totalItens
+
     grupos.push({
       titulo: 'Operação',
       itens: [
         { rotulo: 'Ordens de serviço', to: '/ordens-servico' },
+        { rotulo: 'Pendências', to: '/pendencias', contador: pendencias || null },
         { rotulo: 'Obras', to: '/obras' },
         ...(podeEstoque ? [{ rotulo: 'Estoque', to: '/estoque' }] : []),
         { rotulo: 'Clientes', to: '/clientes' },

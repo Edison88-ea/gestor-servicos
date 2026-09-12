@@ -4,9 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { usePontoStore } from './stores/ponto'
 import { useNotificacoesStore } from './stores/notificacoes'
-import { useOsOfflineStore } from './stores/osOffline'
 import { useClientesStore } from './stores/clientes'
 import { useOrdensServicoStore } from './stores/ordensServico'
+import { useSincronizacaoStore } from './stores/sincronizacao'
 import MenuLateral from './components/MenuLateral.vue'
 import NavRail from './components/NavRail.vue'
 import PainelNotificacoes from './components/PainelNotificacoes.vue'
@@ -16,9 +16,10 @@ import Logo3D from './components/Logo3D.vue'
 const auth = useAuthStore()
 const ponto = usePontoStore()
 const notificacoes = useNotificacoesStore()
-const osOffline = useOsOfflineStore()
 const clientes = useClientesStore()
 const ordens = useOrdensServicoStore()
+// Gatilhos e status agregado das três filas offline (ver stores/sincronizacao.js)
+const sinc = useSincronizacaoStore()
 const online = ref(navigator.onLine)
 const menuAberto = ref(false)
 const notificacoesAbertas = ref(false)
@@ -35,15 +36,12 @@ function voltar() {
   else router.push({ name: ehGestao.value ? 'painel-gestor' : 'ponto' })
 }
 let intervaloNotificacoes = null
+let intervaloSincronizacao = null
 
-async function sincronizarTudo() {
-  if (!navigator.onLine || !auth.isAuthenticated) return
-  ponto.sincronizarFila()
-  // clientes primeiro: uma OS criada offline pode apontar para um cliente
-  // criado offline, que precisa ganhar id real antes de a OS subir.
-  await clientes.sincronizar()
-  osOffline.sincronizar()
-}
+// O ciclo em si (ordem clientes → OS → ponto e trava contra sobreposição) vive
+// na store de sincronização, para o botão "Tentar agora" da tela Pendências
+// disparar exatamente o mesmo ciclo, com a mesma trava.
+const sincronizarTudo = () => sinc.sincronizarTudo()
 
 function atualizarStatusRede() {
   online.value = navigator.onLine
@@ -63,6 +61,10 @@ function pararPollNotificacoes() {
     clearInterval(intervaloNotificacoes)
     intervaloNotificacoes = null
   }
+  if (intervaloSincronizacao) {
+    clearInterval(intervaloSincronizacao)
+    intervaloSincronizacao = null
+  }
 }
 
 function iniciarPollNotificacoes() {
@@ -70,8 +72,8 @@ function iniciarPollNotificacoes() {
   notificacoes.atualizarContagem()
   intervaloNotificacoes = setInterval(() => {
     notificacoes.atualizarContagem()
-    sincronizarTudo() // reaproveita o tick para reprocessar a fila offline
   }, 60000)
+  intervaloSincronizacao = setInterval(sincronizarTudo, 20000)
 }
 
 onMounted(() => {
@@ -83,8 +85,13 @@ onMounted(() => {
 // Liga/desliga o poll de notificações conforme o login, sem depender de reload.
 watch(
   () => auth.isAuthenticated,
-  (autenticado) => {
+  async (autenticado) => {
     if (autenticado) {
+      // iniciarStores() nunca rejeita: o `iniciar()` de cada store contém a
+      // própria falha e fica não-iniciada (o ciclo de sincronização tenta de
+      // novo). Assim uma falha de leitura do IndexedDB não pode mais impedir
+      // o sincronizarTudo() e o poll de notificações desta sessão.
+      await sinc.iniciarStores()
       sincronizarTudo()
       if (navigator.onLine) {
         auth.atualizarPerfil()
@@ -137,28 +144,33 @@ onBeforeUnmount(() => {
 
   <div v-if="!online" class="offline-banner">
     Sem conexão — o que você fizer será enviado quando o sinal voltar
-    <template v-if="osOffline.pendentes || ponto.filaOffline.length">
-      ({{ osOffline.pendentes + ponto.filaOffline.length }} pendente(s))
+    <template v-if="sinc.pendentes">
+      ({{ sinc.pendentes }} pendente(s))
     </template>
   </div>
-  <div
-    v-else-if="osOffline.temErro"
+  <RouterLink
+    v-else-if="sinc.temErro"
+    to="/pendencias"
     class="offline-banner"
-    style="background: var(--danger); cursor: pointer"
-    @click="osOffline.sincronizar()"
+    style="background: var(--danger); display: block; text-decoration: none; color: inherit"
   >
-    Alguns envios falharam — toque para tentar de novo
-  </div>
+    Alguns envios falharam — toque para ver
+  </RouterLink>
   <div
-    v-else-if="osOffline.sincronizando || ponto.sincronizando"
+    v-else-if="sinc.sincronizandoAlgo"
     class="offline-banner"
     style="background: var(--accent)"
   >
     Sincronizando…
   </div>
-  <div v-else-if="osOffline.pendentes || ponto.filaOffline.length" class="offline-banner" style="background: var(--accent)">
-    {{ osOffline.pendentes + ponto.filaOffline.length }} item(ns) aguardando envio
-  </div>
+  <RouterLink
+    v-else-if="sinc.pendentes"
+    to="/pendencias"
+    class="offline-banner"
+    style="background: var(--accent); display: block; text-decoration: none; color: inherit; cursor: pointer"
+  >
+    {{ sinc.pendentes }} item(ns) aguardando envio — toque pra ver ou tentar agora
+  </RouterLink>
 
   <RouterView />
 

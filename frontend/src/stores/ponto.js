@@ -2,6 +2,11 @@ import { defineStore } from 'pinia'
 import client from '../api/client'
 import { dataLocalISO } from '../utils/tempo'
 import { arredondarCoord, arredondarMetros } from '../utils/geo'
+import { carregarFila, mesclarFila, salvarFila } from '../utils/filaStorage'
+
+// Identidade estável de uma batida: é a mesma chave composta que o
+// `_enfileirar` já usa para não duplicar (tipo + instante do registro).
+const idBatida = (r) => `${r.tipo}|${r.registrado_em}`
 
 function ontemISO() {
   const d = new Date()
@@ -42,12 +47,13 @@ export const usePontoStore = defineStore('ponto', {
     // para saber se há jornada que virou a noite, e o técnico precisa ver o
     // que já bateu mesmo sem sinal.
     registrosRecentes: carregar(RECENTES_KEY),
-    filaOffline: carregar(QUEUE_KEY),
+    filaOffline: [],
     // Batidas que o servidor recusou (4xx — sequência inválida, etc.). Ficam
     // visíveis para o funcionário em vez de sumir caladas; ele pode abrir uma
     // solicitação de ajuste a partir daí.
-    rejeitados: carregar(REJEITADOS_KEY),
+    rejeitados: [],
     sincronizando: false,
+    iniciado: false,
   }),
   getters: {
     // Batidas de hoje para a lista "Registros de hoje" — inclui as que ainda
@@ -64,6 +70,45 @@ export const usePontoStore = defineStore('ponto', {
     },
   },
   actions: {
+    // Fila e rejeitados entram no state em bloco — ver o comentário longo em
+    // osOffline#iniciar(): carregar uma e falhar na outra deixando
+    // `iniciado = true` faria a próxima gravação apagar do disco a chave que
+    // não carregou. Nunca lança; se falhar, `iniciado` continua false e o
+    // próximo gatilho de sincronização tenta de novo.
+    //
+    // O que entra no state é a UNIÃO do disco com o que já está em memória, não
+    // o disco puro: enquanto `iniciar()` não passa, o técnico continua batendo
+    // ponto (o app não bloqueia), e uma batida feita nessa janela pode não ter
+    // chegado ao disco. Atribuir o disco direto a apagava da fila e da lista
+    // "Registros de hoje" na cara do técnico. Ver `mesclarFila`.
+    async iniciar() {
+      if (this.iniciado) return
+      try {
+        const [fila, rejeitados] = await Promise.all([
+          carregarFila(QUEUE_KEY),
+          carregarFila(REJEITADOS_KEY),
+        ])
+        const haviaFila = this.filaOffline.length > 0
+        const haviaRejeitados = this.rejeitados.length > 0
+        this.filaOffline = mesclarFila(fila, this.filaOffline, idBatida)
+        this.rejeitados = mesclarFila(rejeitados, this.rejeitados, idBatida)
+        this.iniciado = true
+        // leitura voltou a funcionar: torna a união durável
+        if (haviaFila) await this._persistirFila()
+        if (haviaRejeitados) await this._persistirRejeitados()
+      } catch (e) {
+        console.warn('[ponto] falha ao carregar a fila offline; tentando de novo no próximo ciclo', e)
+      }
+    },
+
+    async _persistirFila() {
+      await salvarFila(QUEUE_KEY, this.filaOffline)
+    },
+
+    async _persistirRejeitados() {
+      await salvarFila(REJEITADOS_KEY, this.rejeitados)
+    },
+
     async carregarRegistrosHoje() {
       try {
         const { data } = await client.get('/registros-ponto/', {
@@ -77,13 +122,13 @@ export const usePontoStore = defineStore('ponto', {
       }
     },
 
-    _enfileirar(registro) {
+    async _enfileirar(registro) {
       const jaTem = this.filaOffline.some(
         (r) => r.tipo === registro.tipo && r.registrado_em === registro.registrado_em,
       )
       if (!jaTem) {
         this.filaOffline.push(registro)
-        salvar(QUEUE_KEY, this.filaOffline)
+        await this._persistirFila()
       }
     },
 
@@ -109,7 +154,7 @@ export const usePontoStore = defineStore('ponto', {
         return 'enviado'
       } catch (error) {
         if (deveManterNaFila(error)) {
-          this._enfileirar({ ...registro, origem_offline: true })
+          await this._enfileirar({ ...registro, origem_offline: true })
           return 'na_fila'
         }
         throw error
@@ -120,54 +165,66 @@ export const usePontoStore = defineStore('ponto', {
       if (this.sincronizando || this.filaOffline.length === 0) return
       this.sincronizando = true
 
-      // Envia em ordem cronológica (a fila pode ter batidas fora de ordem se
-      // alguma foi reenfileirada depois de uma falha).
-      const pendentes = [...this.filaOffline].sort(
-        (a, b) => new Date(a.registrado_em) - new Date(b.registrado_em),
-      )
-
+      // Declarado fora do try porque o `if (restantes.length === 0)` no fim
+      // (recarregar as batidas do servidor) é lido depois do finally.
       const restantes = []
-      let servidorIndisponivel = false
+      try {
+        // Envia em ordem cronológica (a fila pode ter batidas fora de ordem se
+        // alguma foi reenfileirada depois de uma falha).
+        const pendentes = [...this.filaOffline].sort(
+          (a, b) => new Date(a.registrado_em) - new Date(b.registrado_em),
+        )
 
-      for (const registro of pendentes) {
-        if (servidorIndisponivel) {
-          restantes.push(registro)
-          continue
-        }
-        try {
-          await client.post('/registros-ponto/', registro)
-        } catch (error) {
-          if (deveManterNaFila(error)) {
-            // Rede caiu de novo ou backend indisponível: mantém esta e todas as
-            // seguintes, tenta tudo de novo na próxima. NUNCA descarta aqui.
+        let servidorIndisponivel = false
+
+        for (const registro of pendentes) {
+          if (servidorIndisponivel) {
             restantes.push(registro)
-            servidorIndisponivel = true
-          } else if (error.response?.data?.duplicado) {
-            // Já chegou ao servidor por outro caminho (Background Sync do
-            // service worker, uma sincronização anterior que caiu antes de
-            // atualizar a fila local). Não é recusa — só descarta.
-          } else {
-            // 4xx: recusa real. Não some calado — vai para "rejeitados".
-            // `tipo` vem como string (validar_sequencia_ponto) ou lista (erro
-            // de campo do serializer) dependendo de quem recusou.
-            const erroTipo = error.response?.data?.tipo
-            const motivo =
-              (Array.isArray(erroTipo) ? erroTipo[0] : erroTipo) ||
-              error.response?.data?.detail ||
-              'Batida recusada pelo servidor.'
-            this.rejeitados.push({
-              ...registro,
-              motivo,
-              rejeitado_em: new Date().toISOString(),
-            })
-            salvar(REJEITADOS_KEY, this.rejeitados)
+            continue
+          }
+          try {
+            await client.post('/registros-ponto/', registro)
+          } catch (error) {
+            if (deveManterNaFila(error)) {
+              // Rede caiu de novo ou backend indisponível: mantém esta e todas
+              // as seguintes, tenta tudo de novo na próxima. NUNCA descarta.
+              restantes.push({
+                ...registro,
+                erroSync: error.response
+                  ? `Erro ${error.response.status} — tentando de novo automaticamente`
+                  : 'Falha de conexão ao enviar — tentando de novo automaticamente',
+              })
+              servidorIndisponivel = true
+            } else if (error.response?.data?.duplicado) {
+              // Já chegou ao servidor por outro caminho (Background Sync do
+              // service worker, uma sincronização anterior que caiu antes de
+              // atualizar a fila local). Não é recusa — só descarta.
+            } else {
+              // 4xx: recusa real. Não some calado — vai para "rejeitados".
+              // `tipo` vem como string (validar_sequencia_ponto) ou lista (erro
+              // de campo do serializer) dependendo de quem recusou.
+              const erroTipo = error.response?.data?.tipo
+              const motivo =
+                (Array.isArray(erroTipo) ? erroTipo[0] : erroTipo) ||
+                error.response?.data?.detail ||
+                'Batida recusada pelo servidor.'
+              this.rejeitados.push({
+                ...registro,
+                motivo,
+                rejeitado_em: new Date().toISOString(),
+              })
+              await this._persistirRejeitados()
+            }
           }
         }
-      }
 
-      this.filaOffline = restantes
-      salvar(QUEUE_KEY, restantes)
-      this.sincronizando = false
+        this.filaOffline = restantes
+        await this._persistirFila()
+      } finally {
+        // Em `finally`: uma exceção no meio do laço deixaria a trava presa em
+        // true e a sincronização do ponto morta pelo resto da sessão.
+        this.sincronizando = false
+      }
 
       if (restantes.length === 0) {
         try {
@@ -178,9 +235,9 @@ export const usePontoStore = defineStore('ponto', {
       }
     },
 
-    descartarRejeitado(indice) {
+    async descartarRejeitado(indice) {
       this.rejeitados.splice(indice, 1)
-      salvar(REJEITADOS_KEY, this.rejeitados)
+      await this._persistirRejeitados()
     },
 
     // Devolve uma batida recusada para a fila (a recusa pode ter sido corrigida
@@ -188,9 +245,9 @@ export const usePontoStore = defineStore('ponto', {
     async reenviarRejeitado(indice) {
       const [item] = this.rejeitados.splice(indice, 1)
       if (!item) return
-      salvar(REJEITADOS_KEY, this.rejeitados)
+      await this._persistirRejeitados()
       const { motivo, rejeitado_em, ...registro } = item
-      this._enfileirar(registro)
+      await this._enfileirar(registro)
       await this.sincronizarFila()
     },
 

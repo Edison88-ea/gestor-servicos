@@ -41,8 +41,9 @@ function sair() {
     <nav class="nr-nav">
       <template v-for="g in grupos" :key="g.titulo">
         <div class="nr-grupo">{{ g.titulo }}</div>
-        <RouterLink v-for="item in g.itens" :key="item.to" :to="item.to" class="nr-item">
+        <RouterLink v-for="item in g.itens" :key="item.to" :to="item.to" class="nr-item" style="display: flex; align-items: center; justify-content: space-between">
           {{ item.rotulo }}
+          <span v-if="item.contador" class="nr-badge" style="position: static">{{ item.contador > 9 ? '9+' : item.contador }}</span>
         </RouterLink>
       </template>
     </nav>

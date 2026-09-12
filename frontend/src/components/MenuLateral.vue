@@ -71,9 +71,14 @@ function sair() {
             :key="item.to"
             type="button"
             class="item-menu"
+            style="display: flex; align-items: center; justify-content: space-between"
             @click="irPara(item.to)"
           >
             {{ item.rotulo }}
+            <span
+              v-if="item.contador"
+              style="background: var(--danger); color: #fff; border-radius: 999px; font-size: 11px; min-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; padding: 0 4px"
+            >{{ item.contador > 9 ? '9+' : item.contador }}</span>
           </button>
         </template>
       </nav>

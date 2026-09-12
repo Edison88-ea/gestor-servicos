@@ -104,7 +104,7 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
         return data
       } catch (erro) {
         if (semRede(erro)) {
-          offline.enfileirarAcao(id, 'iniciar')
+          await offline.enfileirarAcao(id, 'iniciar')
           return this._otimista(id, { status: 'EM_ANDAMENTO' })
         }
         throw erro
@@ -124,7 +124,7 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
         return data
       } catch (erro) {
         if (semRede(erro)) {
-          offline.enfileirarAcao(id, 'pausar', { motivo, observacao })
+          await offline.enfileirarAcao(id, 'pausar', { motivo, observacao })
           return this._otimista(id, { status: 'PAUSADA' })
         }
         throw erro
@@ -140,7 +140,7 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
         return data
       } catch (erro) {
         if (semRede(erro)) {
-          offline.enfileirarAcao(id, 'retomar')
+          await offline.enfileirarAcao(id, 'retomar')
           return this._otimista(id, { status: 'EM_ANDAMENTO' })
         }
         throw erro
@@ -181,7 +181,7 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
             blobChave = novaChaveBlob('assinatura')
             await blobStore.salvar(blobChave, await paraBlobPersistente(assinatura))
           }
-          offline.enfileirarAcao(id, 'concluir', { relato: payload.relato }, blobChave)
+          await offline.enfileirarAcao(id, 'concluir', { relato: payload.relato }, blobChave)
           // Edição de uma OS já concluída (offline): não repõe a data de
           // conclusão — só marca o relato otimista.
           const jaConcluida =
@@ -215,7 +215,7 @@ export const useOrdensServicoStore = defineStore('ordensServico', {
           const chave = novaChaveBlob('foto')
           const blob = await paraBlobPersistente(arquivo)
           await blobStore.salvar(chave, blob)
-          offline.enfileirarAcao(id, 'foto', {}, chave)
+          await offline.enfileirarAcao(id, 'foto', {}, chave)
           return { id: chave, legenda: legenda || '', imagem: URL.createObjectURL(blob), _local: true }
         }
         throw erro

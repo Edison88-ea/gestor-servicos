@@ -1,20 +1,17 @@
 import { defineStore } from 'pinia'
 import client from '../api/client'
 import { blobStore, novaChaveBlob, paraBlobPersistente } from '../utils/idb'
+import { carregarFila, mesclarFila, salvarFila } from '../utils/filaStorage'
 
 const KEY_LOCAIS = 'os_locais'
 const KEY_ACOES = 'os_acoes_pendentes'
 
-function carregar(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]')
-  } catch {
-    return []
-  }
-}
-function salvar(key, valor) {
-  localStorage.setItem(key, JSON.stringify(valor))
-}
+// Identidade estável de cada fila, para a união feita em `iniciar()`.
+// `locais` já nasce com `id` (`tmp_...`) em `osLocalVazia`. `acoesPendentes`
+// não tem campo de id próprio, então usa a mesma chave composta que a
+// PendenciasView já usa como identidade de fato no `:key`.
+const idLocal = (os) => os.id
+const idAcao = (a) => `${a.osId}|${a.tipo}|${a.criadoEm}`
 
 function novoTmpId() {
   return `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -60,9 +57,10 @@ function osLocalVazia(dados) {
 
 export const useOsOfflineStore = defineStore('osOffline', {
   state: () => ({
-    locais: carregar(KEY_LOCAIS),
-    acoesPendentes: carregar(KEY_ACOES),
+    locais: [],
+    acoesPendentes: [],
     sincronizando: false,
+    iniciado: false,
   }),
 
   getters: {
@@ -72,9 +70,41 @@ export const useOsOfflineStore = defineStore('osOffline', {
   },
 
   actions: {
-    _persistir() {
-      salvar(KEY_LOCAIS, this.locais)
-      salvar(KEY_ACOES, this.acoesPendentes)
+    // Carrega as duas filas em bloco: ou as duas entram no state e a store
+    // fica iniciada, ou nada é tocado e `iniciado` continua false (o próximo
+    // gatilho de sincronização chama de novo). Carregar uma e falhar na outra
+    // com `iniciado = true` era a perda de dado do incidente: a fila que não
+    // carregou ficava `[]` em memória e a primeira gravação seguinte
+    // (`_persistir`, que grava as duas chaves juntas) apagava do disco o que
+    // ainda não tinha subido. Nunca lança — quem chama faz fire-and-forget.
+    //
+    // O que entra no state é a UNIÃO do disco com o que já está em memória, não
+    // o disco puro: como esta ação é retryável (a primeira tentativa pode ter
+    // falhado) e o app não bloqueia o técnico enquanto ela não passa, pode
+    // haver OS/ação criada em memória que o disco ainda não conhece. Ver
+    // `mesclarFila`.
+    async iniciar() {
+      if (this.iniciado) return
+      try {
+        const [locais, acoes] = await Promise.all([
+          carregarFila(KEY_LOCAIS),
+          carregarFila(KEY_ACOES),
+        ])
+        const haviaEmMemoria = this.locais.length > 0 || this.acoesPendentes.length > 0
+        this.locais = mesclarFila(locais, this.locais, idLocal, true)
+        this.acoesPendentes = mesclarFila(acoes, this.acoesPendentes, idAcao)
+        this.iniciado = true
+        // Agora que a leitura voltou a funcionar, torna a união durável — o que
+        // foi criado durante a janela pode nunca ter chegado ao disco.
+        if (haviaEmMemoria) await this._persistir()
+      } catch (e) {
+        console.warn('[osOffline] falha ao carregar a fila offline; tentando de novo no próximo ciclo', e)
+      }
+    },
+
+    async _persistir() {
+      await salvarFila(KEY_LOCAIS, this.locais)
+      await salvarFila(KEY_ACOES, this.acoesPendentes)
     },
 
     local(id) {
@@ -83,7 +113,7 @@ export const useOsOfflineStore = defineStore('osOffline', {
 
     // Chamado quando um cliente criado offline sincroniza e ganha id real: as
     // OS locais que apontavam para o id temporário passam a apontar para o real.
-    trocarClienteTmp(tmpId, realId) {
+    async trocarClienteTmp(tmpId, realId) {
       let mudou = false
       for (const os of this.locais) {
         if (os.cliente === tmpId) {
@@ -91,23 +121,23 @@ export const useOsOfflineStore = defineStore('osOffline', {
           mudou = true
         }
       }
-      if (mudou) this._persistir()
+      if (mudou) await this._persistir()
     },
 
     // --- criação/edição local (usadas quando offline ou a OS é tmp_) ---
 
-    criarLocal(dados) {
+    async criarLocal(dados) {
       const os = osLocalVazia(dados)
       this.locais.unshift(os)
-      this._persistir()
+      await this._persistir()
       return os
     },
 
-    aplicarLocal(id, mudancas) {
+    async aplicarLocal(id, mudancas) {
       const os = this.local(id)
       if (!os) return null
       Object.assign(os, mudancas)
-      this._persistir()
+      await this._persistir()
       return os
     },
 
@@ -118,7 +148,7 @@ export const useOsOfflineStore = defineStore('osOffline', {
       const os = this.local(id)
       const foto = { id: chave, legenda: '', imagem: URL.createObjectURL(blob), _local: true }
       os.fotos.push(foto)
-      this._persistir()
+      await this._persistir()
       return foto
     },
 
@@ -132,13 +162,13 @@ export const useOsOfflineStore = defineStore('osOffline', {
       }
       os.status = 'CONCLUIDA'
       os.data_conclusao = new Date().toISOString()
-      this._persistir()
+      await this._persistir()
       return os
     },
 
     // --- ações pendentes em OS que já existem no servidor ---
 
-    enfileirarAcao(osId, tipo, payload = {}, blobChave = null) {
+    async enfileirarAcao(osId, tipo, payload = {}, blobChave = null) {
       this.acoesPendentes.push({
         osId,
         tipo, // 'iniciar' | 'pausar' | 'retomar' | 'foto' | 'concluir'
@@ -147,7 +177,7 @@ export const useOsOfflineStore = defineStore('osOffline', {
         criadoEm: new Date().toISOString(),
         erroSync: '',
       })
-      this._persistir()
+      await this._persistir()
     },
 
     // --- sincronização ---
@@ -190,14 +220,14 @@ export const useOsOfflineStore = defineStore('osOffline', {
             longitude_abertura: os.longitude_abertura ?? undefined,
           })
           os.sync.realId = criada.id
-          this._persistir()
+          await this._persistir()
         }
         const realId = os.sync.realId
 
         if (!os.sync.iniciado && ['EM_ANDAMENTO', 'PAUSADA', 'CONCLUIDA'].includes(os.status)) {
           await client.post(`/ordens-servico/${realId}/iniciar/`)
           os.sync.iniciado = true
-          this._persistir()
+          await this._persistir()
         }
 
         for (const foto of os.fotos) {
@@ -210,7 +240,7 @@ export const useOsOfflineStore = defineStore('osOffline', {
             await client.post(`/ordens-servico/${realId}/fotos/`, fd)
           }
           os.sync.fotosOk.push(foto.id)
-          this._persistir()
+          await this._persistir()
         }
 
         if (!os.sync.concluido && os.status === 'CONCLUIDA') {
@@ -228,10 +258,10 @@ export const useOsOfflineStore = defineStore('osOffline', {
         for (const foto of os.fotos) await blobStore.remover(foto.id)
         if (os.assinaturaChave) await blobStore.remover(os.assinaturaChave)
         this.locais = this.locais.filter((o) => o.id !== os.id)
-        this._persistir()
+        await this._persistir()
       } catch (e) {
         os.erroSync = mensagemFalha(e)
-        this._persistir()
+        await this._persistir()
       }
     },
 
@@ -259,17 +289,17 @@ export const useOsOfflineStore = defineStore('osOffline', {
         }
         if (acao.blobChave) await blobStore.remover(acao.blobChave)
         this.acoesPendentes = this.acoesPendentes.filter((a) => a !== acao)
-        this._persistir()
+        await this._persistir()
       } catch (e) {
         acao.erroSync = mensagemFalha(e)
-        this._persistir()
+        await this._persistir()
       }
     },
 
-    descartarComErro() {
+    async descartarComErro() {
       this.locais = this.locais.filter((o) => !o.erroSync)
       this.acoesPendentes = this.acoesPendentes.filter((a) => !a.erroSync)
-      this._persistir()
+      await this._persistir()
     },
   },
 })
